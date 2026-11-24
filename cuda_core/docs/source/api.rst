@@ -87,6 +87,13 @@ using events or other CUDA synchronization mechanisms as needed. See
 for a complete example.
 
 
+GPUDirect Storage
+-----------------
+
+See :doc:`cufile` for native synchronous, CUDA-stream, and batch storage I/O,
+resource lifetime rules, driver controls, and the API reference.
+
+
 CUDA compilation toolchain
 --------------------------
 

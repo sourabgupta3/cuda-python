@@ -1,0 +1,42 @@
+[
+  {
+    "command": [
+      "/tmp/cufile-framework-env/bin/python",
+      "prototypes/kvikio_python/docs/validation/cucim-library-order-repro.py"
+    ],
+    "returncode": -11,
+    "stdout": "cuFile version: 1190\nConstructing Device after library load\n",
+    "stderr": "Fatal Python error: Segmentation fault\n\nCurrent thread 0x0000770e7e184080 (most recent call first):\n  File \"/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/docs/validation/cucim-library-order-repro.py\", line 34 in <module>\n\nExtension modules: cuda.bindings._internal.utils, cuda.bindings._internal.cufile, cuda.bindings.cycufile, numpy._core._multiarray_umath, numpy.linalg._umath_linalg, cuda.bindings._internal.driver, cuda.bindings.cydriver, cuda.bindings.driver, cuda.bindings.cufile, cupy_backends.cuda._softlink, cupy_backends.cuda.api._runtime_enum, cupy_backends.cuda.api.runtime, cupy._util, cupy.cuda.device, cupy.cuda.memory_hook, cupy_backends.cuda.stream, cupy.cuda.graph, cupy.cuda.stream, cupy_backends.cuda.api._driver_enum, cupy_backends.cuda.api.driver, cupy.cuda.memory, cupy._core.internal, cupy._core._carray, cupy._core._dtype, cupy._core._scalar, cupy.cuda.texture, cupy.cuda.function, cupy_backends.cuda.libs.nvrtc, cupy.cuda.pinned_memory, cupy.cuda.common, cupy.cuda.cub, cupy_backends.cuda.libs.nvtx, cupy.cuda.thrust, cupy._core._accelerator, cupy._core._memory_range, cupy._core._fusion_thread_local, cupy._core._kernel, cupy._core._routines_manipulation, cupy._core._routines_binary, cupy._core._optimize_config, cupy._core._cub_reduction, cupy._core._reduction, cupy._core._routines_math, cupy._core._routines_indexing, cupy._core._routines_linalg, cupy._core._routines_logic, cupy._core._routines_sorting, cupy._core._routines_statistics, cupy._core.dlpack, cupy._core.flags, cupy._core.core, cupy._core._fusion_variable, cupy._core._fusion_trace, cupy._core._fusion_kernel, cupy._core.new_fusion, cupy._core.fusion, cupy._core.raw, cupy.fft._cache, cupy.fft._callback, cupy.random._generator_api, cupy.random._bit_generator, cupy.lib._polynomial, cupy_backends.cuda.libs.cusolver (total: 63)\n"
+  },
+  {
+    "command": [
+      "/tmp/cufile-framework-env/bin/python",
+      "prototypes/kvikio_python/docs/validation/cucim-library-order-repro.py",
+      "--device-first"
+    ],
+    "returncode": 0,
+    "stdout": "cpu\ncuFile version: 1190\nConstructing Device after library load\ncpu\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "/tmp/cufile-framework-env/bin/python",
+      "prototypes/kvikio_python/docs/validation/cucim-library-order-repro.py",
+      "--kvikio"
+    ],
+    "returncode": -11,
+    "stdout": "Constructing Device after library load\n",
+    "stderr": "Fatal Python error: Segmentation fault\n\nCurrent thread 0x0000790d44027080 (most recent call first):\n  File \"/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/docs/validation/cucim-library-order-repro.py\", line 34 in <module>\n\nExtension modules: kvikio._lib.defaults, numpy._core._multiarray_umath, numpy.linalg._umath_linalg, kvikio._lib.arr, kvikio._lib.buffer, kvikio._lib.future, kvikio._lib.file_handle, kvikio._lib.mmap, kvikio._lib.statistics, kvikio._lib.stream, cupy_backends.cuda._softlink, cupy_backends.cuda.api._runtime_enum, cupy_backends.cuda.api.runtime, cupy._util, cupy.cuda.device, cupy.cuda.memory_hook, cupy_backends.cuda.stream, cupy.cuda.graph, cupy.cuda.stream, cupy_backends.cuda.api._driver_enum, cupy_backends.cuda.api.driver, cupy.cuda.memory, cupy._core.internal, cupy._core._carray, cupy._core._dtype, cupy._core._scalar, cupy.cuda.texture, cupy.cuda.function, cupy_backends.cuda.libs.nvrtc, cupy.cuda.pinned_memory, cupy.cuda.common, cupy.cuda.cub, cupy_backends.cuda.libs.nvtx, cupy.cuda.thrust, cupy._core._accelerator, cupy._core._memory_range, cupy._core._fusion_thread_local, cupy._core._kernel, cupy._core._routines_manipulation, cupy._core._routines_binary, cupy._core._optimize_config, cupy._core._cub_reduction, cupy._core._reduction, cupy._core._routines_math, cupy._core._routines_indexing, cupy._core._routines_linalg, cupy._core._routines_logic, cupy._core._routines_sorting, cupy._core._routines_statistics, cupy._core.dlpack, cupy._core.flags, cupy._core.core, cupy._core._fusion_variable, cupy._core._fusion_trace, cupy._core._fusion_kernel, cupy._core.new_fusion, cupy._core.fusion, cupy._core.raw, cupy.fft._cache, cupy.fft._callback, cupy.random._generator_api, cupy.random._bit_generator, cupy.lib._polynomial, cupy_backends.cuda.libs.cusolver (total: 64)\n"
+  },
+  {
+    "command": [
+      "/tmp/cufile-framework-env/bin/python",
+      "prototypes/kvikio_python/docs/validation/cucim-library-order-repro.py",
+      "--kvikio",
+      "--device-first"
+    ],
+    "returncode": 0,
+    "stdout": "cpu\nConstructing Device after library load\ncpu\n",
+    "stderr": ""
+  }
+]

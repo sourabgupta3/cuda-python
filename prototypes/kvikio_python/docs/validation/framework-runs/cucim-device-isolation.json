@@ -1,0 +1,37 @@
+[
+  {
+    "case": "plain",
+    "code": "\nfrom cucim.clara.io import Device\nprint(\"creating Device\",flush=True)\nprint(Device(\"cpu\"),flush=True)\n",
+    "returncode": 0
+  },
+  {
+    "case": "kvikio_import",
+    "code": "import kvikio\nfrom cucim.clara.io import Device\nprint(\"creating Device\",flush=True)\nprint(Device(\"cpu\"),flush=True)\n",
+    "returncode": -11
+  },
+  {
+    "case": "bindings_import",
+    "code": "from cuda.bindings import cufile\nfrom cucim.clara.io import Device\nprint(\"creating Device\",flush=True)\nprint(Device(\"cpu\"),flush=True)\n",
+    "returncode": 0
+  },
+  {
+    "case": "cufile_loaded",
+    "code": "from cuda.bindings import cufile; print(cufile.get_version(),flush=True)\nfrom cucim.clara.io import Device\nprint(\"creating Device\",flush=True)\nprint(Device(\"cpu\"),flush=True)\n",
+    "returncode": -11
+  },
+  {
+    "case": "alias_import",
+    "code": "from cufile_python.compat import enable_kvikio_compat; enable_kvikio_compat()\nfrom cucim.clara.io import Device\nprint(\"creating Device\",flush=True)\nprint(Device(\"cpu\"),flush=True)\n",
+    "returncode": 0
+  },
+  {
+    "case": "device_before_cufile",
+    "code": "from cucim.clara.io import Device; print(Device(\"cpu\"),flush=True)\nfrom cuda.bindings import cufile; print(cufile.get_version(),flush=True)\nprint(Device(\"cpu\"),flush=True)",
+    "returncode": 0
+  },
+  {
+    "case": "device_before_kvikio",
+    "code": "from cucim.clara.io import Device; print(Device(\"cpu\"),flush=True)\nimport kvikio\nprint(Device(\"cpu\"),flush=True)",
+    "returncode": 0
+  }
+]

@@ -1,0 +1,11 @@
+PASS hello_world-AUTO-reference
+PASS hello_world-AUTO-python
+PASS hello_world-ON-reference
+PASS hello_world-ON-python
+PASS hello_world-OFF-reference
+PASS hello_world-OFF-python
+PASS single_node_io-ON-reference
+PASS single_node_io-ON-python
+PASS single_node_io-OFF-reference
+PASS single_node_io-OFF-python
+10 application runs passed; sources unchanged and output hashes match.

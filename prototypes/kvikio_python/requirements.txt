@@ -1,0 +1,9 @@
+# Runtime (cuFile bindings use NumPy for native structures):
+cuda-bindings>=13.4.4
+numpy>=2
+# Development and validation dependencies:
+cupy-cuda13x>=14
+pytest
+pytest-timeout
+# Pinned upstream benchmark fixtures (not imported by the runtime):
+dask[array]

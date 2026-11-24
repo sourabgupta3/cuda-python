@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+!cufile_python/_version.py
+!cufile_python/VERSION
+!cufile_python/GIT_COMMIT
+!docs/validation/*.log

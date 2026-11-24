@@ -217,6 +217,10 @@ cdef GreenCtxHandle create_green_ctx_handle(
 cdef GreenCtxHandle create_green_ctx_handle_ref(cydriver.CUgreenCtx ctx) except+ nogil
 cdef ContextHandle get_primary_context(int device_id) except+ nogil
 cdef ContextHandle get_current_context() except+ nogil
+cdef cydriver.CUresult io_enter_context(
+    const ContextHandle& context, cydriver.CUcontext* previous, int* changed) noexcept nogil
+cdef cydriver.CUresult io_exit_context(
+    cydriver.CUcontext previous, int changed, cydriver.CUresult status) noexcept nogil
 cdef cydriver.CUresult context_synchronize(
     const ContextHandle& h_context) noexcept nogil
 cdef cydriver.CUresult context_get_stream_priority_range(

@@ -1,0 +1,17 @@
+{
+  "documentId": "183_EGMZONpgtYP5bOBMOrqxjehK-QMPqMTSj8iU-IIA",
+  "title": "cufile_python: local file I/O over CUDA bindings - separate design",
+  "tabId": "t.0",
+  "revisionId": "AHj4eMSDQoXIJx0MT5jhZzzr5hJh9gHUBWMGg_V8QppJIZi0HOVvjTiB60qow4s5u0pRCKj6eN8f6moW1KVxAgUBr9R1uJwbFe15TxG7ImI",
+  "checks": {
+    "batchHeading": true,
+    "codeFont": true,
+    "codeSize": true,
+    "validation87": true,
+    "nativeLimit": true,
+    "examplesWithAndWithoutScope": true,
+    "noStaleScope": true,
+    "linkedReference": true,
+    "preservedTable": true
+  }
+}

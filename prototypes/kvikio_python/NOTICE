@@ -1,0 +1,29 @@
+cufile_python: KvikIO-compatible local file I/O prototype
+
+Public Python frontends are derived from RAPIDS KvikIO v26.10.00,
+commit 5530d767aeb55f63db59a7bb64f2745e8061eee5, licensed under Apache-2.0.
+Original NVIDIA copyright and SPDX notices are retained in those files.
+Source: https://github.com/rapidsai/kvikio/tree/v26.10.00/python/kvikio
+
+The _lib modules here are a new Python implementation, not the original
+Cython modules or libkvikio. __init__.py removes libkvikio loading and exports
+the selected CuFile APIs. defaults.py and utils.py omit remote settings and
+HTTP helpers. The statistics
+frontend documents observation by the Python backend.
+Local I/O now always requires libcufile. Legacy compatibility/fallback settings
+are retained as no-ops for I/O routing. The Python POSIX/staging backend is
+removed; registration always calls cuFile and bounce_buffer_free returns zero.
+Buffer/defaults/file/statistics docstrings document these intentional differences.
+The import package is renamed to cufile_python, including internal imports.
+compat.py provides opt-in aliases for the supported legacy kvikio module names.
+batch.py adds an original Python Batch/BatchOp/BatchCompletion interface over
+native cuFile batch APIs. This extension has no KvikIO 26.10 Python equivalent.
+VERSION and GIT_COMMIT identify the compatibility source, not a released
+distribution or the revision of this experimental backend.
+
+No original libkvikio binaries or C++ sources are included.
+
+The archive retains historical local-I/O performance evidence. The unrelated
+package-wide experiment and bundled benchmark modules have been removed.
+Upstream application helpers are fetched as validation fixtures, outside the
+runtime import package.

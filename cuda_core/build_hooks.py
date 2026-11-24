@@ -477,6 +477,7 @@ def _build_cuda_core(debug=False):
     _posix_only_modules = frozenset(
         {
             "_utils/_wsl_locale",
+            "_cufile_native",
         }
     )
 

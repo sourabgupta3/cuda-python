@@ -1,0 +1,2 @@
+# Preserve compressed benchmark evidence without line-ending conversion.
+*.gz binary !eol

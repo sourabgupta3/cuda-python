@@ -15,12 +15,19 @@ Welcome to the documentation for ``cuda.core``.
    10_minutes_to_cuda_core
    examples
    interoperability
+   cufile
    concurrency
    error_handling
    api
    api_nvml
    environment_variables
    contribute
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Design proposals:
+
+   design/cufile
 
 .. toctree::
    :maxdepth: 1

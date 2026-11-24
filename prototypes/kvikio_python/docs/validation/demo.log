@@ -1,0 +1,8 @@
+/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/cufile_python/__init__.py
+KvikIO I/O summary
+  wall time            123181297 ns
+  busy time            2927485 ns
+  operations           4
+  bytes                4194304 of 4194304 requested
+  errors               0
+  backend GDS          4194304 bytes in 4 ops

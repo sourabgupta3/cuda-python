@@ -1,0 +1,40 @@
+{
+  "framework": "cucim",
+  "workflow": "explicit",
+  "api": "pread",
+  "backend": "python",
+  "status": "passed",
+  "package": "/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/cufile_python/__init__.py",
+  "native_version": 1190,
+  "versions": {
+    "cudf-cu13": "26.10.2",
+    "cucim-cu13": "26.10.0",
+    "kvikio-cu13": "26.10.0",
+    "cuda-bindings": "13.4.4",
+    "cupy-cuda13x": "14.2.0",
+    "numpy": "2.4.6"
+  },
+  "checks": [
+    "GPU image input",
+    "Gaussian smoothing",
+    "connected components",
+    "GPU label output",
+    "scikit-image reference"
+  ],
+  "routing": "Python cuFile bindings",
+  "output_sha256": "55b29c1eddae4ccc3193cd70b270511077d4a62f0a90cdad0ac1f7b066e5352e",
+  "output_bytes": 1048576,
+  "python_api_calls": {
+    "__init__": 2,
+    "pread": 1,
+    "pwrite": 1
+  },
+  "bindings_calls": {
+    "read": 4,
+    "write": 4
+  },
+  "loaded_libraries": [
+    "/tmp/cufile-framework-env/lib/python3.12/site-packages/cucim/clara/libcucim.so.26",
+    "/usr/local/cuda-13.4/targets/x86_64-linux/lib/libcufile.so.1.19.0"
+  ]
+}

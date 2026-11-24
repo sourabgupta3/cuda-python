@@ -1,0 +1,339 @@
+{
+  "source_commit": "5530d767aeb55f63db59a7bb64f2745e8061eee5",
+  "sources": {
+    "hello_world": {
+      "url": "https://raw.githubusercontent.com/rapidsai/kvikio/5530d767aeb55f63db59a7bb64f2745e8061eee5/python/kvikio/examples/hello_world.py",
+      "sha256": "5b90684a5aef46fd86732e7a97d7439b2f6a5329fe248e46fefdbaf6104dfbe4"
+    },
+    "single_node_io": {
+      "url": "https://raw.githubusercontent.com/rapidsai/kvikio/5530d767aeb55f63db59a7bb64f2745e8061eee5/python/kvikio/kvikio/benchmarks/single_node_io.py",
+      "sha256": "a7c93dd4575c3436fb0852c8bd4b236f4f58051e2a8aca8b79fb3f126608c2de"
+    },
+    "benchmark_utils": {
+      "url": "https://raw.githubusercontent.com/rapidsai/kvikio/5530d767aeb55f63db59a7bb64f2745e8061eee5/python/kvikio/kvikio/benchmarks/utils.py",
+      "sha256": "d056dca3e5e70808ccb0387917f85cd8eea9add15d4000a930bfe0e83389f1cc"
+    }
+  },
+  "runs": [
+    {
+      "implementation": "reference",
+      "application": "hello_world",
+      "package": "/tmp/cufile-core-env/lib/python3.12/site-packages/kvikio/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": true,
+      "cufile_bindings_imported": false,
+      "routing_policy": "KvikIO",
+      "settings": {
+        "compat_mode": "2",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "example.bin": {
+          "bytes": 800,
+          "sha256": "96bdba67cd0b5e6dc0f9e399f66b17eae627eac812d0620119e87687d789546a"
+        }
+      },
+      "status": "passed",
+      "stdout": "KvikIO I/O summary\n  wall time            500.42 ms\n  busy time            2.31 ms (0.46 % of the wall time)\n  busy bandwidth       1.38 MB/s\n  operations           5 (4 read, 1 write)\n  mean duration        513.19 us\n  bytes                3.12 KiB of 3.12 KiB requested (2.34 KiB read, 800 B written)\n  errors               0\n  backend GDS          3.12 KiB in 5 ops, 2.57 ms, 1.25 MB/s\n\n3200 bytes in 5 operations\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "python",
+      "application": "hello_world",
+      "package": "/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/cufile_python/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": false,
+      "cufile_bindings_imported": true,
+      "routing_policy": "cuFile required; compatibility settings are no-ops",
+      "settings": {
+        "compat_mode": "2",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "example.bin": {
+          "bytes": 800,
+          "sha256": "96bdba67cd0b5e6dc0f9e399f66b17eae627eac812d0620119e87687d789546a"
+        }
+      },
+      "status": "passed",
+      "stdout": "KvikIO I/O summary\n  wall time            507106711 ns\n  busy time            2261810 ns\n  operations           5\n  bytes                3200 of 3200 requested\n  errors               0\n  backend GDS          3200 bytes in 5 ops\n\n3200 bytes in 5 operations\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "reference",
+      "application": "hello_world",
+      "package": "/tmp/cufile-core-env/lib/python3.12/site-packages/kvikio/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": true,
+      "cufile_bindings_imported": false,
+      "routing_policy": "KvikIO",
+      "settings": {
+        "compat_mode": "1",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "example.bin": {
+          "bytes": 800,
+          "sha256": "96bdba67cd0b5e6dc0f9e399f66b17eae627eac812d0620119e87687d789546a"
+        }
+      },
+      "status": "passed",
+      "stdout": "KvikIO I/O summary\n  wall time            478 ms\n  busy time            16.39 ms (3.43 % of the wall time)\n  busy bandwidth       195.25 kB/s\n  operations           5 (4 read, 1 write)\n  mean duration        3.29 ms\n  bytes                3.12 KiB of 3.12 KiB requested (2.34 KiB read, 800 B written)\n  errors               0\n  backend POSIX        3.12 KiB in 5 ops, 16.45 ms, 194.57 kB/s\n\n3200 bytes in 5 operations\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "python",
+      "application": "hello_world",
+      "package": "/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/cufile_python/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": false,
+      "cufile_bindings_imported": true,
+      "routing_policy": "cuFile required; compatibility settings are no-ops",
+      "settings": {
+        "compat_mode": "1",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "example.bin": {
+          "bytes": 800,
+          "sha256": "96bdba67cd0b5e6dc0f9e399f66b17eae627eac812d0620119e87687d789546a"
+        }
+      },
+      "status": "passed",
+      "stdout": "KvikIO I/O summary\n  wall time            504781222 ns\n  busy time            2054060 ns\n  operations           5\n  bytes                3200 of 3200 requested\n  errors               0\n  backend GDS          3200 bytes in 5 ops\n\n3200 bytes in 5 operations\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "reference",
+      "application": "hello_world",
+      "package": "/tmp/cufile-core-env/lib/python3.12/site-packages/kvikio/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": true,
+      "cufile_bindings_imported": false,
+      "routing_policy": "KvikIO",
+      "settings": {
+        "compat_mode": "0",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "example.bin": {
+          "bytes": 800,
+          "sha256": "96bdba67cd0b5e6dc0f9e399f66b17eae627eac812d0620119e87687d789546a"
+        }
+      },
+      "status": "passed",
+      "stdout": "KvikIO I/O summary\n  wall time            498.58 ms\n  busy time            2.03 ms (0.41 % of the wall time)\n  busy bandwidth       1.57 MB/s\n  operations           5 (4 read, 1 write)\n  mean duration        456.75 us\n  bytes                3.12 KiB of 3.12 KiB requested (2.34 KiB read, 800 B written)\n  errors               0\n  backend GDS          3.12 KiB in 5 ops, 2.28 ms, 1.40 MB/s\n\n3200 bytes in 5 operations\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "python",
+      "application": "hello_world",
+      "package": "/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/cufile_python/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": false,
+      "cufile_bindings_imported": true,
+      "routing_policy": "cuFile required; compatibility settings are no-ops",
+      "settings": {
+        "compat_mode": "0",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "example.bin": {
+          "bytes": 800,
+          "sha256": "96bdba67cd0b5e6dc0f9e399f66b17eae627eac812d0620119e87687d789546a"
+        }
+      },
+      "status": "passed",
+      "stdout": "KvikIO I/O summary\n  wall time            496938891 ns\n  busy time            2209490 ns\n  operations           5\n  bytes                3200 of 3200 requested\n  errors               0\n  backend GDS          3200 bytes in 5 ops\n\n3200 bytes in 5 operations\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "reference",
+      "application": "single_node_io",
+      "package": "/tmp/cufile-core-env/lib/python3.12/site-packages/kvikio/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": true,
+      "cufile_bindings_imported": false,
+      "routing_policy": "KvikIO",
+      "settings": {
+        "compat_mode": "1",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "kvikio-single-file": {
+          "bytes": 16777216,
+          "sha256": "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+        },
+        "kvikio-multiple-arrays": {
+          "bytes": 16777216,
+          "sha256": "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+        },
+        "cufile-p-000": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-001": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-002": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-003": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        }
+      },
+      "status": "passed",
+      "stdout": "Roundtrip benchmark\n----------------------------------\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n   WARNING - KvikIO compat mode   \n      libcufile.so not used       \n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nGPU               | NVIDIA H200 NVL (dev #0)\nGPU Memory Total  | 140.40 GiB\nBAR1 Memory Total | 274877906944\nlibcufile version | 1.19\nGDS driver        | N/A (Compatibility Mode)\nGDS config.json   | /etc/cufile.json\n----------------------------------\nnbytes            | 16777216 bytes (16.00 MiB)\n4K aligned        | True\npre-reg-buf       | True\ndirectory         | /mnt/nvme0/kvikio-upstream-apps-xo_ebbib/single_node_io-ON-reference\nnthreads          | 4\nnruns             | 1\n==================================\ncufile read       | 711.26 MiB/s\ncufile write      | 756.66 MiB/s\ncufile-mfma read  |   3.77 GiB/s\ncufile-mfma write |  17.39 GiB/s\ncufile-mf read    |   3.69 GiB/s\ncufile-mf write   |   9.60 GiB/s\ncufile-ma read    |   5.12 GiB/s\ncufile-ma write   |  12.20 GiB/s\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "python",
+      "application": "single_node_io",
+      "package": "/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/cufile_python/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": false,
+      "cufile_bindings_imported": true,
+      "routing_policy": "cuFile required; compatibility settings are no-ops",
+      "settings": {
+        "compat_mode": "1",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "kvikio-single-file": {
+          "bytes": 16777216,
+          "sha256": "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+        },
+        "kvikio-multiple-arrays": {
+          "bytes": 16777216,
+          "sha256": "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+        },
+        "cufile-p-000": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-001": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-002": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-003": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        }
+      },
+      "status": "passed",
+      "stdout": "Roundtrip benchmark\n----------------------------------\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n   WARNING - KvikIO compat mode   \n      libcufile.so not used       \n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nGPU               | NVIDIA H200 NVL (dev #0)\nGPU Memory Total  | 140.40 GiB\nBAR1 Memory Total | 274877906944\nlibcufile version | 1.19\nGDS driver        | N/A (Compatibility Mode)\nGDS config.json   | /etc/cufile.json\n----------------------------------\nnbytes            | 16777216 bytes (16.00 MiB)\n4K aligned        | True\npre-reg-buf       | True\ndirectory         | /mnt/nvme0/kvikio-upstream-apps-xo_ebbib/single_node_io-ON-python\nnthreads          | 4\nnruns             | 1\n==================================\ncufile read       |   4.75 GiB/s\ncufile write      |   3.82 GiB/s\ncufile-mfma read  |   4.88 GiB/s\ncufile-mfma write |  13.89 GiB/s\ncufile-mf read    |   4.66 GiB/s\ncufile-mf write   |   7.77 GiB/s\ncufile-ma read    |   5.24 GiB/s\ncufile-ma write   |   9.16 GiB/s\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "reference",
+      "application": "single_node_io",
+      "package": "/tmp/cufile-core-env/lib/python3.12/site-packages/kvikio/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": true,
+      "cufile_bindings_imported": false,
+      "routing_policy": "KvikIO",
+      "settings": {
+        "compat_mode": "0",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "kvikio-single-file": {
+          "bytes": 16777216,
+          "sha256": "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+        },
+        "kvikio-multiple-arrays": {
+          "bytes": 16777216,
+          "sha256": "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+        },
+        "cufile-p-000": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-001": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-002": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-003": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        }
+      },
+      "status": "passed",
+      "stdout": "Roundtrip benchmark\n----------------------------------\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n   WARNING - cuFile compat mode   \n         GDS not enabled          \n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nGPU               | NVIDIA H200 NVL (dev #0)\nGPU Memory Total  | 140.40 GiB\nBAR1 Memory Total | 274877906944\nlibcufile version | 1.19\nGDS driver        | N/A (Compatibility Mode)\nGDS config.json   | /etc/cufile.json\n----------------------------------\nnbytes            | 16777216 bytes (16.00 MiB)\n4K aligned        | True\npre-reg-buf       | True\ndirectory         | /mnt/nvme0/kvikio-upstream-apps-xo_ebbib/single_node_io-OFF-reference\nnthreads          | 4\nnruns             | 1\n==================================\ncufile read       |   5.61 GiB/s\ncufile write      |   4.12 GiB/s\ncufile-mfma read  |   5.28 GiB/s\ncufile-mfma write |  15.16 GiB/s\ncufile-mf read    |   5.15 GiB/s\ncufile-mf write   |   8.01 GiB/s\ncufile-ma read    |   5.28 GiB/s\ncufile-ma write   |   9.73 GiB/s\n",
+      "stderr": ""
+    },
+    {
+      "implementation": "python",
+      "application": "single_node_io",
+      "package": "/home/rladmin/sourab/cuda-python/prototypes/kvikio_python/cufile_python/__init__.py",
+      "version": "26.10.00",
+      "libkvikio_loaded": false,
+      "cufile_bindings_imported": true,
+      "routing_policy": "cuFile required; compatibility settings are no-ops",
+      "settings": {
+        "compat_mode": "0",
+        "num_threads": "4",
+        "task_size": "1048576",
+        "gds_threshold": "0"
+      },
+      "verified_files": {
+        "kvikio-single-file": {
+          "bytes": 16777216,
+          "sha256": "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+        },
+        "kvikio-multiple-arrays": {
+          "bytes": 16777216,
+          "sha256": "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+        },
+        "cufile-p-000": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-001": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-002": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        },
+        "cufile-p-003": {
+          "bytes": 4194304,
+          "sha256": "2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e"
+        }
+      },
+      "status": "passed",
+      "stdout": "Roundtrip benchmark\n----------------------------------\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n   WARNING - cuFile compat mode   \n         GDS not enabled          \n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nGPU               | NVIDIA H200 NVL (dev #0)\nGPU Memory Total  | 140.40 GiB\nBAR1 Memory Total | 274877906944\nlibcufile version | 1.19\nGDS driver        | N/A (Compatibility Mode)\nGDS config.json   | /etc/cufile.json\n----------------------------------\nnbytes            | 16777216 bytes (16.00 MiB)\n4K aligned        | True\npre-reg-buf       | True\ndirectory         | /mnt/nvme0/kvikio-upstream-apps-xo_ebbib/single_node_io-OFF-python\nnthreads          | 4\nnruns             | 1\n==================================\ncufile read       |   4.67 GiB/s\ncufile write      |   3.81 GiB/s\ncufile-mfma read  |   4.83 GiB/s\ncufile-mfma write |  13.51 GiB/s\ncufile-mf read    |   4.62 GiB/s\ncufile-mf write   |   6.97 GiB/s\ncufile-ma read    |   5.12 GiB/s\ncufile-ma write   |   8.54 GiB/s\n",
+      "stderr": ""
+    }
+  ]
+}

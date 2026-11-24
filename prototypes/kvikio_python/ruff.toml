@@ -1,0 +1,11 @@
+extend = "../../ruff.toml"
+
+[lint.per-file-ignores]
+# Preserve the upstream frontend's annotations, exports, and helper conventions.
+"cufile_python/*.py" = ["UP045", "RUF022", "RUF100", "PIE790", "B009", "PIE800", "T201"]
+"cufile_python/benchmarks/*.py" = ["B023", "RUF015", "UP031", "S105", "SIM115", "S602", "S607"]
+# These harnesses execute fixed scripts with the current interpreter, without a
+# shell. /tmp is only an import-isolating working directory, not a temporary name.
+"benchmarks/*.py" = ["S108", "S603", "T201"]
+"tests/*.py" = ["S108", "S603", "S607"]
+"examples/*.py" = ["T201"]

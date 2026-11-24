@@ -1,0 +1,356 @@
+{
+  "target": "KvikIO 26.10.0",
+  "implementation": "cufile_python (namespace normalized for comparison)",
+  "scope": "CuFile local file I/O and supporting APIs; not the complete KvikIO package",
+  "modules": [
+    "buffer",
+    "cufile",
+    "cufile_driver",
+    "defaults",
+    "statistics",
+    "stream",
+    "utils"
+  ],
+  "excluded": [
+    "RemoteFile",
+    "LocalHttpServer",
+    "remote settings",
+    "Mmap",
+    "NumPy file helpers",
+    "Zarr",
+    "Numcodecs",
+    "Nsight NIC helper"
+  ],
+  "source_commit": "5530d767aeb55f63db59a7bb64f2745e8061eee5",
+  "members": 67,
+  "intentional_behavior_differences": [
+    "All host/device I/O requires cuFile; no Python POSIX fallback",
+    "compat_mode, gds_threshold, bounce_buffer_size, and auto_direct_io_read/write do not affect I/O",
+    "is_compat_mode_preferred always returns False",
+    "Memory registration always calls cuFile; bounce_buffer_free returns zero",
+    "The retained gds statistics bucket denotes cuFile calls, not proof of physical GDS"
+  ],
+  "missing": [],
+  "changed": [],
+  "added": [],
+  "extensions": {
+    "cufile_python.batch.BatchOp": {
+      "bases": []
+    },
+    "cufile_python.batch.BatchCompletion": {
+      "bases": []
+    },
+    "cufile_python.batch.BatchCompletion.get": {
+      "arguments": "self",
+      "returns": "int",
+      "decorators": []
+    },
+    "cufile_python.batch.Batch": {
+      "bases": []
+    },
+    "cufile_python.batch.Batch.__init__": {
+      "arguments": "self, capacity: int",
+      "returns": null,
+      "decorators": []
+    },
+    "cufile_python.batch.Batch.capacity": {
+      "arguments": "self",
+      "returns": "int",
+      "decorators": [
+        "property"
+      ]
+    },
+    "cufile_python.batch.Batch.closed": {
+      "arguments": "self",
+      "returns": "bool",
+      "decorators": [
+        "property"
+      ]
+    },
+    "cufile_python.batch.Batch.pending": {
+      "arguments": "self",
+      "returns": "int",
+      "decorators": [
+        "property"
+      ]
+    },
+    "cufile_python.batch.Batch.submit": {
+      "arguments": "self, operations",
+      "returns": "None",
+      "decorators": []
+    },
+    "cufile_python.batch.Batch.poll": {
+      "arguments": "self, max_complete: int | None=None",
+      "returns": "tuple[BatchCompletion, ...]",
+      "decorators": []
+    },
+    "cufile_python.batch.Batch.wait_all": {
+      "arguments": "self, timeout: float | None=None",
+      "returns": "tuple[BatchCompletion, ...]",
+      "decorators": []
+    },
+    "cufile_python.batch.Batch.cancel": {
+      "arguments": "self",
+      "returns": "None",
+      "decorators": []
+    },
+    "cufile_python.batch.Batch.close": {
+      "arguments": "self, *, timeout: float | None=None",
+      "returns": "None",
+      "decorators": []
+    },
+    "cufile_python.batch.Batch.__enter__": {
+      "arguments": "self",
+      "returns": null,
+      "decorators": []
+    },
+    "cufile_python.batch.Batch.__exit__": {
+      "arguments": "self, kind, error, traceback",
+      "returns": null,
+      "decorators": []
+    }
+  },
+  "api": {
+    "kvikio.buffer.memory_register": "buf",
+    "kvikio.buffer.memory_deregister": "buf",
+    "kvikio.buffer.bounce_buffer_free": "",
+    "kvikio.cufile.IOFutureStream": {
+      "bases": []
+    },
+    "kvikio.cufile.IOFutureStream.__init__": {
+      "arguments": "self, handle",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.cufile.IOFutureStream.check_bytes_done": {
+      "arguments": "self",
+      "returns": "int",
+      "decorators": []
+    },
+    "kvikio.cufile.IOFuture": {
+      "bases": []
+    },
+    "kvikio.cufile.IOFuture.__init__": {
+      "arguments": "self, handle",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.cufile.IOFuture.get": {
+      "arguments": "self",
+      "returns": "int",
+      "decorators": []
+    },
+    "kvikio.cufile.IOFuture.done": {
+      "arguments": "self",
+      "returns": "bool",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile": {
+      "bases": []
+    },
+    "kvikio.cufile.CuFile.__init__": {
+      "arguments": "self, file: Union[pathlib.Path, str], flags: str='r'",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.close": {
+      "arguments": "self",
+      "returns": "None",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.closed": {
+      "arguments": "self",
+      "returns": "bool",
+      "decorators": [
+        "property"
+      ]
+    },
+    "kvikio.cufile.CuFile.fileno": {
+      "arguments": "self",
+      "returns": "int",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.open_flags": {
+      "arguments": "self",
+      "returns": "int",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.__enter__": {
+      "arguments": "self",
+      "returns": "'CuFile'",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.__exit__": {
+      "arguments": "self, exc_type, exc_val, exc_tb",
+      "returns": "None",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.pread": {
+      "arguments": "self, buf, size: Optional[int]=None, file_offset: int=0, task_size: Optional[int]=None",
+      "returns": "IOFuture",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.pwrite": {
+      "arguments": "self, buf, size: Optional[int]=None, file_offset: int=0, task_size: Optional[int]=None",
+      "returns": "IOFuture",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.read": {
+      "arguments": "self, buf, size: Optional[int]=None, file_offset: int=0, task_size: Optional[int]=None",
+      "returns": "int",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.write": {
+      "arguments": "self, buf, size: Optional[int]=None, file_offset: int=0, task_size: Optional[int]=None",
+      "returns": "int",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.raw_read_async": {
+      "arguments": "self, buf, raw_stream: int, size: Optional[int]=None, file_offset: int=0, dev_offset: int=0",
+      "returns": "IOFutureStream",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.raw_write_async": {
+      "arguments": "self, buf, raw_stream: int, size: Optional[int]=None, file_offset: int=0, dev_offset: int=0",
+      "returns": "IOFutureStream",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.raw_read": {
+      "arguments": "self, buf, size: Optional[int]=None, file_offset: int=0, dev_offset: int=0",
+      "returns": "int",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.raw_write": {
+      "arguments": "self, buf, size: Optional[int]=None, file_offset: int=0, dev_offset: int=0",
+      "returns": "int",
+      "decorators": []
+    },
+    "kvikio.cufile.CuFile.is_direct_io_supported": {
+      "arguments": "self",
+      "returns": "bool",
+      "decorators": []
+    },
+    "kvikio.cufile.get_page_cache_info": "file: Union[os.PathLike, str, int, io.IOBase], offset: int=0, length: int=0",
+    "kvikio.cufile.drop_file_page_cache": "file: Union[os.PathLike, str, int, io.IOBase], offset: int=0, length: int=0, sync_first: bool=True",
+    "kvikio.cufile.drop_system_page_cache": "reclaim_dentries_and_inodes: bool=True, sync_first: bool=True",
+    "kvikio.cufile.clear_page_cache": "reclaim_dentries_and_inodes: bool=True, clear_dirty_pages: bool=True",
+    "kvikio.cufile_driver.ConfigContextManager": {
+      "bases": []
+    },
+    "kvikio.cufile_driver.ConfigContextManager.__init__": {
+      "arguments": "self, config: dict[str, str]",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.cufile_driver.ConfigContextManager.__enter__": {
+      "arguments": "self",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.cufile_driver.ConfigContextManager.__exit__": {
+      "arguments": "self, type_unused, value, traceback_unused",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.cufile_driver.set": "*config",
+    "kvikio.cufile_driver.get": "config_name: str",
+    "kvikio.cufile_driver.libcufile_version": "",
+    "kvikio.cufile_driver.driver_open": "",
+    "kvikio.cufile_driver.driver_close": "",
+    "kvikio.cufile_driver.initialize": "",
+    "kvikio.defaults.ConfigContextManager": {
+      "bases": []
+    },
+    "kvikio.defaults.ConfigContextManager.__init__": {
+      "arguments": "self, config: dict[str, str]",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.defaults.ConfigContextManager.__enter__": {
+      "arguments": "self",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.defaults.ConfigContextManager.__exit__": {
+      "arguments": "self, type_unused, value, traceback_unused",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.defaults.set": "*config",
+    "kvikio.defaults.get": "config_name: str",
+    "kvikio.defaults.is_compat_mode_preferred": "",
+    "kvikio.statistics.Summary": {
+      "bases": []
+    },
+    "kvikio.statistics.Summary.since": {
+      "arguments": "self, previous: 'Summary'",
+      "returns": "'Summary'",
+      "decorators": []
+    },
+    "kvikio.statistics.Summary.to_json": {
+      "arguments": "self",
+      "returns": "str",
+      "decorators": []
+    },
+    "kvikio.statistics.Summary.serialize": {
+      "arguments": "self",
+      "returns": "bytes",
+      "decorators": []
+    },
+    "kvikio.statistics.Summary.deserialize": {
+      "arguments": "data: bytes",
+      "returns": "'Summary'",
+      "decorators": [
+        "staticmethod"
+      ]
+    },
+    "kvikio.statistics.Summary.report": {
+      "arguments": "self, all_rows: bool=False",
+      "returns": "str",
+      "decorators": []
+    },
+    "kvikio.statistics.SummaryMonitor": {
+      "bases": []
+    },
+    "kvikio.statistics.SummaryMonitor.__init__": {
+      "arguments": "self",
+      "returns": null,
+      "decorators": []
+    },
+    "kvikio.statistics.SummaryMonitor.get": {
+      "arguments": "self",
+      "returns": "Summary",
+      "decorators": []
+    },
+    "kvikio.statistics.SummaryMonitor.reset": {
+      "arguments": "self",
+      "returns": "None",
+      "decorators": []
+    },
+    "kvikio.statistics.SummaryMonitor.since": {
+      "arguments": "self, previous: Summary",
+      "returns": "Summary",
+      "decorators": []
+    },
+    "kvikio.statistics.SummaryMonitor.stop": {
+      "arguments": "self",
+      "returns": "None",
+      "decorators": []
+    },
+    "kvikio.statistics.SummaryMonitor.__enter__": {
+      "arguments": "self",
+      "returns": "'SummaryMonitor'",
+      "decorators": []
+    },
+    "kvikio.statistics.SummaryMonitor.__exit__": {
+      "arguments": "self, exc_type, exc_value, traceback",
+      "returns": "None",
+      "decorators": []
+    },
+    "kvikio.stream.stream_register": "raw_stream: int, flags: int",
+    "kvikio.stream.stream_deregister": "raw_stream: int",
+    "kvikio.utils.call_once": "func: Callable",
+    "kvikio.utils.kvikio_deprecation_notice": "msg: str='This function is deprecated.', *, since: str",
+    "kvikio.utils.kvikio_deprecate_module": "msg: str='', *, since: str"
+  }
+}

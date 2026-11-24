@@ -1,0 +1,20 @@
+Design example 1: passed
+(1, 19)
+Design example 2: passed
+Design example 3: passed
+Design example 4: passed
+input 4096
+output 1048576
+Design example 5: passed
+Design example 6: passed
+KvikIO I/O summary
+  wall time            2902511 ns
+  busy time            2133167 ns
+  operations           1
+  bytes                1048576 of 1048576 requested
+  errors               0
+  backend GDS          1048576 bytes in 1 ops
+
+Design example 7: passed
+Design example 8: passed
+8 design examples passed; README, design, and performance RST parsed.

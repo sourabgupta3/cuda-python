@@ -33,6 +33,12 @@ from cuda.bindings cimport cynvrtc
 from cuda.bindings cimport cynvvm
 from cuda.bindings cimport cynvjitlink
 
+cdef extern from "_cpp/rt/context_scope.hpp" namespace "cuda_core::rt::detail":
+    cydriver.CUresult io_enter_context "cuda_core::rt::detail::enter_context" (
+        const ContextHandle& context, cydriver.CUcontext* previous, int* changed) noexcept nogil
+    cydriver.CUresult io_exit_context "cuda_core::rt::detail::exit_context" (
+        cydriver.CUcontext previous, int changed, cydriver.CUresult status) noexcept nogil
+
 
 # =============================================================================
 # C++ function declarations (non-inline, implemented under _cpp/rt/)
