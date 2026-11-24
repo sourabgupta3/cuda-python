@@ -316,7 +316,13 @@ cdef class Buffer:
             record_stream = mr.is_device_accessible
             self._h_ptr = deviceptr_create_with_mr(c_ptr, size, mr)
             if record_stream:
-                _ds_status = set_deallocation_stream(self._h_ptr, s._h_stream)
+                try:
+                    _ds_status = set_deallocation_stream(self._h_ptr, s._h_stream)
+                except MemoryError:
+                    # Reset for the same reason as below, inside the handler so the
+                    # destructor cannot swallow the MemoryError that is propagating.
+                    self._h_ptr.reset()
+                    raise
                 if _ds_status != cydriver.CUresult.CUDA_SUCCESS:
                     # Reset before raising: the DevicePtrHandle destructor would otherwise
                     # invoke _mr_dealloc_callback, which catches any inner exception and
@@ -404,8 +410,8 @@ cdef class Buffer:
     @classmethod
     def from_ipc_descriptor(
         cls, mr: DeviceMemoryResource | PinnedMemoryResource | VirtualMemoryResource,
-        ipc_descriptor: IPCBufferDescriptor,
-        *, stream: Stream
+        IPCBufferDescriptor ipc_descriptor not None: IPCBufferDescriptor,
+        *, Stream stream not None: Stream
     ) -> Buffer:
         """Import a buffer that was exported from another process.
 
@@ -505,7 +511,7 @@ cdef class Buffer:
         self.close()
         return False
 
-    def copy_to(self, dst: Buffer | None = None, *, stream: Stream | GraphBuilder,
+    def copy_to(self, Buffer dst: Buffer | None = None, *, stream: Stream | GraphBuilder,
                 options: CopyOptions | None = None) -> Buffer:
         """Copy from this buffer to the dst buffer asynchronously on the given stream.
 
@@ -555,7 +561,7 @@ cdef class Buffer:
                                  "buffer does not have a memory_resource)")
             dst = self._memory_resource.allocate(src_size, stream=s)
         else:
-            Buffer_check_open(<Buffer>dst)
+            Buffer_check_open(dst)
 
         cdef size_t dst_size = dst._size
         if dst_size != src_size:
@@ -566,7 +572,7 @@ cdef class Buffer:
             as_cu(dst._h_ptr), as_cu(self._h_ptr), src_size, s, options, "copy_to")
         return dst
 
-    def copy_from(self, src: Buffer, *, stream: Stream | GraphBuilder,
+    def copy_from(self, Buffer src not None: Buffer, *, stream: Stream | GraphBuilder,
                   options: CopyOptions | None = None) -> None:
         """Copy from the src buffer to this buffer asynchronously on the given stream.
 

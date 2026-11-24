@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib
 import multiprocessing as mp
 import multiprocessing.reduction
 import os
@@ -8,6 +9,7 @@ import os
 import pytest
 from helpers.buffers import PatternGen
 from helpers.child_processes import child_timeout_sec, kill_subprocesses
+from helpers.memory import drain_on_exit, import_pool_resource, is_pool_resource
 
 from cuda.core import Buffer, Device, DeviceMemoryResource, PinnedMemoryResource, VirtualMemoryResource
 
@@ -17,11 +19,6 @@ NBYTES = 64
 # these tests spawn new processes and files which fails for very many threads;
 # child processes and IPC fixtures are shared across workers (#2784); cap at two threads
 pytestmark = pytest.mark.parallel_threads_limit(2)
-
-
-def _is_pool(mr):
-    """Whether ``mr`` has the pool half of the IPC protocol (allocation handle, registry, uuid)."""
-    return isinstance(mr, (DeviceMemoryResource, PinnedMemoryResource))
 
 
 class TestObjectSerializationDirect:
@@ -46,8 +43,8 @@ class TestObjectSerializationDirect:
         # Send a memory resource: a pool by its allocation handle over the raw
         # fd channel, a VirtualMemoryResource as the object itself (it holds no
         # driver object; a VMM descriptor carries its fds per allocation).
-        parent_conn.send(_is_pool(mr))
-        if _is_pool(mr):
+        parent_conn.send(type(mr) if is_pool_resource(mr) else None)
+        if is_pool_resource(mr):
             alloc_handle = mr.allocation_handle
             mp.reduction.send_handle(parent_conn, alloc_handle.handle, process.pid)
         else:
@@ -81,27 +78,27 @@ class TestObjectSerializationDirect:
         device.set_current()
 
         # Receive the memory resource.
-        if conn.recv():  # pool
+        pool_cls = conn.recv()
+        if pool_cls is not None:
             handle = mp.reduction.recv_handle(conn)
-            mr = DeviceMemoryResource.from_allocation_handle(device, handle)
+            mr = import_pool_resource(pool_cls, device, handle)
             os.close(handle)
         else:
             mr = conn.recv()
             assert isinstance(mr, VirtualMemoryResource)
 
-        # Receive the buffers.
-        buffer1 = conn.recv()  # directly
-        buffer_desc = conn.recv()
         stream = device.default_stream
-        buffer2 = Buffer.from_ipc_descriptor(mr, buffer_desc, stream=stream)  # by descriptor
+        with contextlib.ExitStack() as stack:
+            drain_on_exit(stack, stream)
+            # Receive the buffers.
+            buffer1 = stack.enter_context(conn.recv())  # directly
+            buffer_desc = conn.recv()
+            buffer2 = stack.enter_context(Buffer.from_ipc_descriptor(mr, buffer_desc, stream=stream))  # by descriptor
 
-        # Modify the buffers.
-        pgen = PatternGen(device, NBYTES, stream=stream)
-        pgen.fill_buffer(buffer1, seed=True)
-        pgen.fill_buffer(buffer2, seed=True)
-        buffer1.close()
-        buffer2.close()
-        stream.sync()
+            # Modify the buffers.
+            pgen = PatternGen(device, NBYTES, stream=stream)
+            pgen.fill_buffer(buffer1, seed=True)
+            pgen.fill_buffer(buffer2, seed=True)
 
 
 class TestObjectSerializationWithMR:
@@ -149,19 +146,19 @@ class TestObjectSerializationWithMR:
         mr = pipe[0].get(timeout=CHILD_TIMEOUT_SEC)
         pipe[1].put(getattr(mr, "uuid", None))
 
-        # Buffer.
-        buffer = pipe[0].get(timeout=CHILD_TIMEOUT_SEC)
-        if _is_pool(mr):
-            assert buffer.memory_resource.handle == mr.handle
-        else:
-            # A VMM resource pickles as (device, options); the buffer's rebuilt
-            # resource is equivalent, not identical.
-            assert buffer.memory_resource.config == mr.config
         stream = device.default_stream
-        pgen = PatternGen(device, NBYTES, stream=stream)
-        pgen.fill_buffer(buffer, seed=True)
-        buffer.close()
-        stream.sync()
+        with contextlib.ExitStack() as stack:
+            drain_on_exit(stack, stream)
+            # Buffer.
+            buffer = stack.enter_context(pipe[0].get(timeout=CHILD_TIMEOUT_SEC))
+            if is_pool_resource(mr):
+                assert buffer.memory_resource.handle == mr.handle
+            else:
+                # A VMM resource pickles as (device, options); the buffer's rebuilt
+                # resource is equivalent, not identical.
+                assert buffer.memory_resource.config == mr.config
+            pgen = PatternGen(device, NBYTES, stream=stream)
+            pgen.fill_buffer(buffer, seed=True)
 
 
 class TestObjectPassing:
@@ -178,7 +175,7 @@ class TestObjectPassing:
         # Define the objects.
         device = ipc_device
         mr = ipc_memory_resource
-        alloc_handle = mr.allocation_handle if _is_pool(mr) else None
+        alloc_handle = mr.allocation_handle if is_pool_resource(mr) else None
         stream = device.default_stream
         buffer = mr.allocate(NBYTES, stream=stream)
         buffer_desc = buffer.ipc_descriptor
@@ -202,32 +199,37 @@ class TestObjectPassing:
     def child_main(self, alloc_handle, mr1, buffer_desc, buffer):
         device = Device()
         device.set_current()
-        if isinstance(mr1, PinnedMemoryResource):
-            with pytest.raises(TypeError):
-                DeviceMemoryResource.from_allocation_handle(device, alloc_handle)
-            mr2 = PinnedMemoryResource.from_allocation_handle(alloc_handle)
-        elif isinstance(mr1, DeviceMemoryResource):
-            with pytest.raises(TypeError):
-                PinnedMemoryResource.from_allocation_handle(alloc_handle)
-            mr2 = DeviceMemoryResource.from_allocation_handle(device, alloc_handle)
-        else:
-            # A VirtualMemoryResource has no allocation handle; the resource
-            # argument itself is the rebuilt resource.
-            assert alloc_handle is None
-            assert isinstance(mr1, VirtualMemoryResource)
-            mr2 = mr1
         stream = device.default_stream
-        pgen = PatternGen(device, NBYTES, stream=stream)
+        with contextlib.ExitStack() as stack:
+            # The buffer argument was unpickled with this device current, so its
+            # free is on this default stream too.
+            drain_on_exit(stack, stream)
+            stack.enter_context(buffer)
+            if isinstance(mr1, PinnedMemoryResource):
+                with pytest.raises(TypeError):
+                    DeviceMemoryResource.from_allocation_handle(device, alloc_handle)
+                mr2 = PinnedMemoryResource.from_allocation_handle(alloc_handle)
+            elif isinstance(mr1, DeviceMemoryResource):
+                with pytest.raises(TypeError):
+                    PinnedMemoryResource.from_allocation_handle(alloc_handle)
+                mr2 = DeviceMemoryResource.from_allocation_handle(device, alloc_handle)
+            else:
+                # A VirtualMemoryResource has no allocation handle; the resource
+                # argument itself is the rebuilt resource.
+                assert alloc_handle is None
+                assert isinstance(mr1, VirtualMemoryResource)
+                mr2 = mr1
+            pgen = PatternGen(device, NBYTES, stream=stream)
 
-        # Verify initial content
-        pgen.verify_buffer(buffer, seed=False)
+            # Import the allocation again, from the descriptor through the resource
+            # rebuilt from the allocation handle. Both buffers alias the same memory.
+            buffer2 = stack.enter_context(Buffer.from_ipc_descriptor(mr2, buffer_desc, stream=stream))
 
-        # Modify the buffer
-        pgen.fill_buffer(buffer, seed=True)
+            # Verify initial content
+            pgen.verify_buffer(buffer, seed=False)
+            pgen.verify_buffer(buffer2, seed=False)
 
-        # Verify modified content
-        pgen.verify_buffer(buffer, seed=True)
-
-        # Clean up - only ONE free
-        buffer.close()
-        stream.sync()
+            # Modify the buffer and verify through both imports
+            pgen.fill_buffer(buffer, seed=True)
+            pgen.verify_buffer(buffer, seed=True)
+            pgen.verify_buffer(buffer2, seed=True)

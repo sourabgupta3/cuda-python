@@ -17,7 +17,6 @@ from cuda.core._utils.cuda_utils cimport (
     HANDLE_RETURN,
 )
 
-import cython
 from dataclasses import dataclass
 import multiprocessing
 import platform  # no-cython-lint
@@ -126,7 +125,9 @@ cdef class DeviceMemoryResource(_MemPool):
 
     For greater efficiency when transferring many buffers, one may also send
     MRs and buffers separately. When an MR is sent via :mod:`multiprocessing`,
-    an MMR is created and registered in the receiving process. Subsequently,
+    an MMR is created and registered in the receiving process, for the device
+    with the same UUID as the MR's device, whatever its ordinal is there; if
+    that device is not visible, unpickling raises ``RuntimeError``. Subsequently,
     buffers may be serialized and transferred using ordinary :mod:`pickle`
     methods.  The reconstruction procedure uses the registry to find the
     associated MMR. Unpickling a :class:`Buffer` performs an IPC import from
@@ -144,7 +145,6 @@ cdef class DeviceMemoryResource(_MemPool):
     def __cinit__(self, *args, **kwargs) -> None:
         self._dev_id = cydriver.CU_DEVICE_INVALID
 
-    @cython.annotation_typing(False)
     def __init__(
         self,
         device_id: Device | int,
@@ -176,6 +176,13 @@ cdef class DeviceMemoryResource(_MemPool):
         -------
         The registered mapped memory resource. If one was previously registered
         with the given key, it is returned.
+
+        Raises
+        ------
+        RuntimeError
+            If the memory resource is not IPC-enabled.
+        ValueError
+            If the memory resource already has a different UUID.
         """
         return <DeviceMemoryResource>(_ipc.MP_register(self, uuid))
 
@@ -202,13 +209,24 @@ cdef class DeviceMemoryResource(_MemPool):
 
         Returns
         -------
-            A new device memory resource instance with the imported handle.
+            A new device memory resource instance with the imported handle. If
+            the handle's memory resource is already registered in this process,
+            that resource is returned with its original device.
+
+        Raises
+        ------
+        TypeError
+            If the handle refers to a host memory pool, which must be imported
+            with :meth:`PinnedMemoryResource.from_allocation_handle`. The
+            pool's kind is checked with a CUDA 13 build of ``cuda.core`` and a
+            13.2 or later driver. Otherwise it is checked only when the
+            handle's memory resource is already registered in this process.
+            The pool's device is not checked against ``device_id``.
         """
-        cdef DeviceMemoryResource mr = <DeviceMemoryResource>(
-            _ipc.MP_from_allocation_handle(cls, alloc_handle))
         from .._device import Device
-        mr._dev_id = Device(device_id).device_id
-        return mr
+        dev_id = Device(device_id).device_id
+        return <DeviceMemoryResource>(
+            _ipc.MP_from_allocation_handle(cls, alloc_handle, _DMR_init_imported, dev_id))
 
     @property
     def allocation_handle(self) -> IPCAllocationHandle:
@@ -305,6 +323,15 @@ cdef inline _DMR_init(DeviceMemoryResource self, device_id, options):
         )
 
 
+cdef int _DMR_init_imported(_MemPool mr, object dev_id) except? -1:
+    cdef cydriver.CUmemLocation loc
+    _ipc.MP_check_import_location(mr, False, &loc)
+    # Runs before the resource is registered: a concurrent import of the same
+    # UUID returns it from the registry and must not write to it.
+    (<DeviceMemoryResource>mr)._dev_id = dev_id
+    return 0
+
+
 # Note: this is referenced in instructions to debug nvbug 5698116.
 cpdef str DMR_mempool_get_access(DeviceMemoryResource dmr, int device_id):
     """
@@ -341,9 +368,17 @@ cpdef str DMR_mempool_get_access(DeviceMemoryResource dmr, int device_id):
 def _deep_reduce_device_memory_resource(mr) -> tuple[object, ...]:
     check_multiprocessing_start_method()
     from .._device import Device
-    device = Device(mr.device_id)
+    # Device ordinals are per process; the receiver maps the UUID to its own device.
+    device_uuid = Device(mr.device_id).uuid
     alloc_handle = mr.allocation_handle
-    return mr.from_allocation_handle, (device, alloc_handle)
+    return _reconstruct_device_memory_resource, (type(mr), device_uuid, alloc_handle)
+
+
+def _reconstruct_device_memory_resource(
+    cls: type, device_uuid: str, IPCAllocationHandle alloc_handle not None: IPCAllocationHandle
+) -> DeviceMemoryResource:
+    from .._device import _device_from_uuid
+    return cls.from_allocation_handle(_device_from_uuid(device_uuid), alloc_handle)
 
 
 multiprocessing.reduction.register(DeviceMemoryResource, _deep_reduce_device_memory_resource)

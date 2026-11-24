@@ -14,11 +14,12 @@ from urllib.request import url2pathname
 import pytest
 
 
+# This test is not currently run in any CI job
 @pytest.mark.parametrize(
     ("distribution_name", "expected_source", "expected_version"),
     (
         ("cuda-core", "cuda_core", "1.1.0"),
-        ("cuda-bindings", "cuda_bindings", "13.3.1"),
+        ("cuda-bindings", "cuda_bindings_13", "13.3.1"),
         ("cuda-pathfinder", "cuda_pathfinder", "1.5.6"),
     ),
 )

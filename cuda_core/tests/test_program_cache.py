@@ -3,10 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import abc
+import functools
 import os
 import time
 
 import pytest
+from helpers.misc import run_in_threads
 
 from cuda.core import _linker
 
@@ -124,7 +126,7 @@ def _make_key(**overrides):
     unspecified defaults to a valid cubin-from-c++ compile over "a"."""
     from cuda.core.utils import make_program_cache_key
 
-    base = dict(code="a", code_type="c++", options=_opts(), target_type="cubin")
+    base = {"code": "a", "code_type": "c++", "options": _opts(), "target_type": "cubin"}
     return make_program_cache_key(**{**base, **overrides})
 
 
@@ -1969,13 +1971,9 @@ def test_filestream_cache_tracker_clamps_at_zero_under_delete_race(tmp_path):
         a_unlinked.set()
         assert b_reseeded.wait(timeout=5), "thread B didn't reseed in time"
 
-    delete_error: list[BaseException] = []
-
     def thread_a():
         try:
             del cache[b"victim"]
-        except BaseException as exc:  # pragma: no cover - surfaces below
-            delete_error.append(exc)
         finally:
             # Don't strand thread B if __delitem__ raised before the hook ran.
             a_unlinked.set()
@@ -1987,17 +1985,10 @@ def test_filestream_cache_tracker_clamps_at_zero_under_delete_race(tmp_path):
 
     _file_stream._unlink_with_sharing_retry = coordinated_unlink
     try:
-        ta = threading.Thread(target=thread_a)
-        tb = threading.Thread(target=thread_b)
-        ta.start()
-        tb.start()
-        ta.join(timeout=10)
-        tb.join(timeout=10)
+        run_in_threads([thread_a, thread_b], timeout=10)
     finally:
         _file_stream._unlink_with_sharing_retry = real_unlink
 
-    assert not delete_error, f"__delitem__ raised: {delete_error[0]!r}"
-    assert not ta.is_alive() and not tb.is_alive(), "race threads didn't finish"
     # Without the clamp, this would be -800. With it, max(0, 100-900) = 0.
     # The tracker still undercounts disk truth (which holds 'survivor' = 100),
     # but the next reseed will correct that, whereas a negative tracker would
@@ -2495,35 +2486,26 @@ def test_inmemory_cache_concurrent_threads_stay_consistent():
     n_readers = 4
     ops_per_thread = 200
     payload = b"v" * 64
-    errors: list[BaseException] = []
     barrier = threading.Barrier(n_writers + n_readers)
 
     def writer(tid: int) -> None:
-        try:
-            barrier.wait()
-            for i in range(ops_per_thread):
-                cache[f"w{tid}-{i}".encode()] = payload
-        except BaseException as exc:
-            errors.append(exc)
+        barrier.wait()
+        for i in range(ops_per_thread):
+            cache[f"w{tid}-{i}".encode()] = payload
 
     def reader(tid: int) -> None:
-        try:
-            barrier.wait()
-            for i in range(ops_per_thread):
-                # Touch a write key so reads sometimes hit and sometimes miss.
-                cache.get(f"w{i % n_writers}-{i}".encode())
-        except BaseException as exc:
-            errors.append(exc)
+        barrier.wait()
+        for i in range(ops_per_thread):
+            # Touch a write key so reads sometimes hit and sometimes miss.
+            cache.get(f"w{i % n_writers}-{i}".encode())
 
-    threads = [threading.Thread(target=writer, args=(t,)) for t in range(n_writers)]
-    threads += [threading.Thread(target=reader, args=(t,)) for t in range(n_readers)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=30)
-        assert not t.is_alive(), "thread deadlocked"
-
-    assert errors == []
+    # A deadlocked thread fails the join timeout.
+    run_in_threads(
+        [functools.partial(writer, t) for t in range(n_writers)]
+        + [functools.partial(reader, t) for t in range(n_readers)],
+        barrier=barrier,
+        timeout=30,
+    )
     # Internal accounting must agree with the cap and with __len__.
     assert cache._total_bytes <= 4096
     assert len(cache) == len(cache._entries)  # no orphan entries
@@ -2534,7 +2516,11 @@ def test_program_cache_tmp_dir_created_owner_only(tmp_path):
     """``tmp`` stages in-flight compiled device code before the atomic rename into
     ``entries``, so it must be created owner-only (0o700) regardless of the inherited
     umask. ``root``/``entries`` intentionally inherit the umask to keep deliberately
-    shared caches working (PR #2399 review), so only ``tmp`` is asserted."""
+    shared caches working (PR #2399 review), so only ``tmp`` is asserted.
+
+    Compare only the access bits (``& 0o777``). A setgid parent makes Linux inherit
+    ``S_ISGID`` onto ``tmp``; that bit does not grant access and must not fail the
+    owner-only check (issue #3214)."""
     import stat
 
     from cuda.core.utils._program_cache._file_stream import FileStreamProgramCache
@@ -2542,7 +2528,7 @@ def test_program_cache_tmp_dir_created_owner_only(tmp_path):
     root = tmp_path / "pc"
     FileStreamProgramCache(path=root)
 
-    mode = stat.S_IMODE(os.stat(root / "tmp").st_mode)
+    mode = stat.S_IMODE(os.stat(root / "tmp").st_mode) & 0o777
     assert mode == 0o700, f"tmp has mode {oct(mode)}"
 
 
@@ -2563,7 +2549,7 @@ def test_program_cache_preexisting_shared_root_used_as_is(tmp_path):
     FileStreamProgramCache(path=root)
 
     assert stat.S_IMODE(os.stat(root).st_mode) == 0o777
-    assert stat.S_IMODE(os.stat(root / "tmp").st_mode) == 0o700
+    assert (stat.S_IMODE(os.stat(root / "tmp").st_mode) & 0o777) == 0o700
 
 
 @pytest.mark.thread_unsafe(reason="monkeypatches the process-global NVVM fingerprint probe")

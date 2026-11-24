@@ -362,10 +362,12 @@ DESCRIPTOR_CATALOG: tuple[DescriptorSpec, ...] = (
         packaged_with="ctk",
         linux_sonames=("libcupti.so.13", "libcupti.so.12"),
         windows_dlls=(
+            "cupti64_13.dll",
             "cupti64_2026.3.1.dll",
             "cupti64_2026.3.0.dll",
             "cupti64_2026.2.1.dll",
             "cupti64_2026.2.0.dll",
+            "cupti64_2026.1.2.dll",
             "cupti64_2026.1.1.dll",
             "cupti64_2026.1.0.dll",
             "cupti64_2025.4.1.dll",
@@ -427,14 +429,21 @@ DESCRIPTOR_CATALOG: tuple[DescriptorSpec, ...] = (
         linux_sonames=("libcudnn.so.9",),
         windows_dlls=("cudnn64_9.dll",),
         supported_windows_arch=("x64", "arm64"),
+        # Skip DLLs that do not match the running Python interpreter's architecture,
+        # allowing the search to continue to a compatible installation.
+        requires_windows_binary_arch_check=True,
         site_packages_linux=("nvidia/cudnn/lib",),
-        site_packages_windows=WindowsSearchDirs.x64_only("nvidia/cudnn/bin"),
+        site_packages_windows=WindowsSearchDirs(
+            x64=("nvidia/cudnn/bin",),
+            arm64=("nvidia/cudnn/bin",),
+        ),
         dependencies=("cublasLt",),
         optional_dependencies=("nvrtc",),
         install_root_env_vars_linux=("CUDNN_PATH",),
         install_root_env_rel_dirs_linux=("lib", "lib64"),
-        # The ARM64 layout is verified only for the standalone archive rooted
-        # at CUDNN_PATH, not for conda, CUDA_PATH, or Program Files installs.
+        # The ARM64 layouts are verified only for the nvidia-cudnn-cu13 wheel and
+        # the standalone archive rooted at CUDNN_PATH, not for conda, CUDA_PATH,
+        # or Program Files installs.
         anchor_rel_dirs_windows=WindowsSearchDirs.x64_only("bin/x64", "bin"),
         install_root_env_vars_windows=("CUDNN_PATH",),
         install_root_env_rel_dirs_windows=WindowsSearchDirs(
@@ -467,8 +476,8 @@ DESCRIPTOR_CATALOG: tuple[DescriptorSpec, ...] = (
     DescriptorSpec(
         name="cudss",
         packaged_with="other",
-        linux_sonames=("libcudss.so.0",),
-        windows_dlls=("cudss64_0.dll",),
+        linux_sonames=("libcudss.so.1", "libcudss.so.0"),
+        windows_dlls=("cudss64_1.dll", "cudss64_0.dll"),
         supported_windows_arch=("x64", "arm64"),
         site_packages_linux=("nvidia/cu13/lib", "nvidia/cu12/lib"),
         site_packages_windows=WindowsSearchDirs(
@@ -476,6 +485,7 @@ DESCRIPTOR_CATALOG: tuple[DescriptorSpec, ...] = (
             arm64=("nvidia/cu13/bin", "nvidia/cu12/bin"),
         ),
         dependencies=("cublas", "cublasLt"),
+        optional_dependencies=("nvrtc",),
     ),
     DescriptorSpec(
         name="cusparseLt",

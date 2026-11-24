@@ -22,8 +22,10 @@ from helpers.constants import POOL_SIZE
 mr = DeviceMemoryResource(dev, DeviceMemoryResourceOptions(max_size=POOL_SIZE))
 ```
 
-Use a larger value only if a test genuinely requires it, and prefer adding a
-shared constant to `helpers/constants.py` over redefining one per module.
+`helpers/constants.py` re-exports `POOL_SIZE` from
+`cuda_python_test_helpers.memory`, where the `cuda.bindings` tests import it
+too. Use a larger value only if a test genuinely requires it, and prefer adding
+a shared constant over redefining one per module.
 
 ### Passing no options is different from passing empty options
 
@@ -40,6 +42,18 @@ DeviceMemoryResource(dev, {"ipc_enabled": True})  # NEW uncapped pool, expensive
 
 Do not add `max_size` to a call that currently passes no options: that
 converts a free default-pool wrapper into a new pool and makes things worse.
+
+### Exception: tests that also use the graph memory pool
+
+The device default pool and the graph memory pool (used by `GraphMemoryResource`
+and graph allocation nodes) each reserve about twice the device memory of
+virtual address space for the lifetime of the process, and neither can be
+capped. A single test that touches both needs both reservations at once, which
+can exceed a small address space on a large-memory GPU. In such a test, prefer
+a capped owned pool (`max_size=POOL_SIZE`) over the default-pool wrapper, and
+release it at the end of the test. The capped pool's reservation is small and
+returned on `close()`. Examples: `test_graph_alloc` and the `sample_buffer`
+fixtures in `test_object_protocols.py`.
 
 ### Managed pools are exempt
 
@@ -96,11 +110,30 @@ Follow these rules when adding or moving shared test code:
   `tests/helpers/` instead.
 - Import helpers explicitly from the test root, for example:
   `from helpers.memory import create_managed_memory_resource_or_skip`.
+- Reuse `run_child` and `noop` from `helpers.child_processes` for synchronous
+  child-process tests. The runner applies the sanitizer-aware timeout, kills
+  surviving children before asserting success, and closes process handles.
+  Before measuring file-descriptor counts around spawned processes, call
+  `warmup_multiprocessing` from the same module to start the persistent
+  resource-tracker pipe outside the baseline. Keep explicit process management
+  when the test needs to communicate with a running child or inspect its lifetime;
+  use `kill_subprocesses` before assertions and `track_child_processes` for
+  fixture cleanup so a stuck child cannot block IPC resource teardown.
+- Run worker threads with `run_in_threads` from `helpers.misc` instead of
+  hand-written start/join loops. An exception in a thread otherwise only ends
+  that thread and the test can pass. The helper re-raises the first failure,
+  aborts a shared `threading.Barrier` so the other workers do not hang, and
+  with `timeout` fails on a thread that does not finish.
+- Use the skip guards in `helpers/memory.py` instead of per-module copies:
+  `skip_if_mempool_unsupported`, `skip_if_managed_mempool_unsupported` (a
+  property check only; it never constructs a managed resource),
+  `skip_if_managed_allocation_unsupported` for raw managed allocations, and
+  `is_pool_resource` to tell pool-backed resources from VMM ones.
 - Search `tests/helpers/` and `cuda_python_test_helpers/` for prior art
   before adding a new helper; consolidate duplicates across
 
   packages into `cuda_python_test_helpers` (both `cuda_core` and
-  `cuda_bindings` test environments already depend on it).
+  `cuda-bindings` test environments already depend on it).
 - Fixtures in a nested `conftest.py` are available to tests in its directory
   and descendants; fixtures from applicable parent `conftest.py` files remain
   available.

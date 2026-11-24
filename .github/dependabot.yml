@@ -6,7 +6,10 @@ version: 2
 updates:
   # GitHub Actions updates targeting the default branch (main)
   - package-ecosystem: github-actions
-    directory: /
+    # "/" covers only .github/workflows/; composite actions must be listed.
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: "monthly"
       time: "09:00"
@@ -36,10 +39,6 @@ updates:
     # Match hook repositories, leaving additional_dependencies pins unchanged.
     allow:
       - dependency-name: "https://github.com/*"
-    # Lychee's hook revision, LYCHEE_VERSION argument, and CI binary pin must
-    # be upgraded together in a coordinated manual update.
-    ignore:
-      - dependency-name: "https://github.com/lycheeverse/lychee"
 
     groups:
       pre-commit-monthly:
@@ -56,23 +55,3 @@ updates:
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 1
-
-  # GitHub Actions updates targeting the 12.9.x branch
-  - package-ecosystem: github-actions
-    directory: /
-    target-branch: "12.9.x"  # keep in sync with backport_branch in ci/versions.yml
-    schedule:
-      interval: "monthly"
-      time: "09:00"
-      timezone: "America/Los_Angeles"
-
-    # Keep churn down: only one open PR from this ecosystem at a time
-    open-pull-requests-limit: 1
-
-    groups:
-      actions-monthly:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["major", "minor", "patch"]
-
-    labels: [CI/CD, dependencies]

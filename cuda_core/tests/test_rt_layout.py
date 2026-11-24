@@ -117,7 +117,7 @@ def test_driver_function_table_matches_the_cuda_bindings_loader():
     """driver_api.hpp lists each driver function with the CUDA version that cuda-bindings
     requests it at. That number decides which functions every supported driver must
     provide. Check it against the loader that cuda-bindings generates."""
-    loader = CORE.parents[2] / "cuda_bindings" / "cuda" / "bindings" / "_internal" / "driver_linux.pyx"
+    loader = CORE.parents[2] / "cuda_bindings_13" / "cuda" / "bindings" / "_internal" / "driver_linux.pyx"
     if not loader.is_file():
         pytest.skip("cuda-bindings source is not next to cuda_core")
     entries = re.findall(r"^\s*X\((cu\w+), (\d+)\)", read(RT / "driver_api.hpp"), re.M)
@@ -138,7 +138,7 @@ def test_driver_function_table_matches_the_cuda_bindings_loader():
 def test_driver_calls_go_through_the_table():
     """Every driver call uses DRIVER_CALL or a pw_ wrapper, which resolves the
     table on first use and never dereferences null. The only raw p_ calls are
-    the table's own machinery and the sites under ipc_import_mutex. Those sites
+    the table's own machinery and the sites under the IPC pointer cache's mutex. Those sites
     resolve the table before the lock and carry the `// raw:` mark."""
     machinery = {"driver_api.hpp", "driver_api.cpp", "py_driver_fns.cpp", "internal.hpp"}
     raw_call = re.compile(r"\bp_(cu|nv)\w+\b")  # calls and null checks alike

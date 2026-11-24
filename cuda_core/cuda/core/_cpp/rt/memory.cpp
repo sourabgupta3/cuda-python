@@ -9,11 +9,13 @@
 #include "error.hpp"
 #include "internal.hpp"
 #include <atomic>
+#include <chrono>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <memory>
-#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 #ifndef _WIN32
 #include <unistd.h>
@@ -38,7 +40,16 @@ struct MemoryPoolBox {
 // Read by the test suite to gate the per-test gc.collect(); atomic for
 // free-threaded builds.
 std::atomic<long long> g_live_owned_mempools{0};
+
+// See set_ipc_pool_release_delay_for_testing.
+std::atomic<unsigned int> g_ipc_pool_release_delay_us{0};
 }  // namespace
+
+void
+set_ipc_pool_release_delay_for_testing(unsigned int microseconds) noexcept
+{
+    g_ipc_pool_release_delay_us.store(microseconds, std::memory_order_relaxed);
+}
 
 // Helper to clear peer access before destroying a memory pool.
 // Works around nvbug 5698116: recycled pool handles inherit peer access state.
@@ -48,7 +59,9 @@ std::atomic<long long> g_live_owned_mempools{0};
 // revoked with its own request, and the owning device (-1 if the pool has
 // none) is not requested at all.
 // Must be noexcept since it's called from a shared_ptr deleter.
-static void clear_mempool_peer_access(CUmemoryPool pool, int owner_device) noexcept {
+static void
+clear_mempool_peer_access(CUmemoryPool pool, int owner_device) noexcept
+{
     try {
         int device_count = 0;
         if (DRIVER_CALL(cuDeviceGetCount, &device_count) != CUDA_SUCCESS || device_count <= 0) {
@@ -65,21 +78,25 @@ static void clear_mempool_peer_access(CUmemoryPool pool, int owner_device) noexc
             revoke.location.id = i;
             DRIVER_CALL(cuMemPoolSetAccess, pool, &revoke, 1);  // Best effort
         }
-    } catch (...) {
+    }
+    catch (...) {  // NOLINT(bugprone-empty-catch)
         // Swallow exceptions - this is best-effort cleanup in destructor context
     }
 }
 
 // owner_device is the ordinal of a device-located pool, or -1 when there is no
 // device to skip (host pools) or the location is unknown (imported pools).
-static MemoryPoolHandle wrap_mempool_owned(CUmemoryPool pool, int owner_device) {
-    auto* raw = new MemoryPoolBox{pool};
+static MemoryPoolHandle
+wrap_mempool_owned(CUmemoryPool pool, int owner_device)
+{
+    auto *raw = new MemoryPoolBox{pool};
     // Count before constructing the shared_ptr: if its control-block allocation
     // throws, it runs the deleter on raw, whose decrement then balances this.
     g_live_owned_mempools.fetch_add(1, std::memory_order_relaxed);
+    // clang-format off
     auto box = std::shared_ptr<const MemoryPoolBox>(
         raw,
-        [owner_device](const MemoryPoolBox* b) {
+        [owner_device](const MemoryPoolBox *b) {
             GILReleaseGuard gil;
             clear_mempool_peer_access(b->resource, owner_device);
             pw_cuMemPoolDestroy(b->resource);
@@ -87,15 +104,20 @@ static MemoryPoolHandle wrap_mempool_owned(CUmemoryPool pool, int owner_device) 
             delete b;
         }
     );
+    // clang-format on
     return MemoryPoolHandle(box, &box->resource);
 }
 
 // Test-suite instrumentation; see g_live_owned_mempools.
-long long live_owned_mempool_count() noexcept {
+long long
+live_owned_mempool_count() noexcept
+{
     return g_live_owned_mempools.load(std::memory_order_relaxed);
 }
 
-MemoryPoolHandle create_mempool_handle(const CUmemPoolProps& props) {
+MemoryPoolHandle
+create_mempool_handle(const CUmemPoolProps &props)
+{
     GILReleaseGuard gil;
     CUmemoryPool pool;
     if (CUDA_SUCCESS != (err = DRIVER_CALL(cuMemPoolCreate, &pool, &props))) {
@@ -105,12 +127,16 @@ MemoryPoolHandle create_mempool_handle(const CUmemPoolProps& props) {
     return wrap_mempool_owned(pool, owner_device);
 }
 
-MemoryPoolHandle create_mempool_handle_ref(CUmemoryPool pool) {
+MemoryPoolHandle
+create_mempool_handle_ref(CUmemoryPool pool)
+{
     auto box = std::make_shared<const MemoryPoolBox>(MemoryPoolBox{pool});
     return MemoryPoolHandle(box, &box->resource);
 }
 
-MemoryPoolHandle get_device_mempool(int device_id) {
+MemoryPoolHandle
+get_device_mempool(int device_id)
+{
     GILReleaseGuard gil;
     CUmemoryPool pool;
     if (CUDA_SUCCESS != (err = DRIVER_CALL(cuDeviceGetMemPool, &pool, device_id))) {
@@ -119,14 +145,112 @@ MemoryPoolHandle get_device_mempool(int device_id) {
     return create_mempool_handle_ref(pool);
 }
 
-MemoryPoolHandle create_mempool_handle_ipc(int fd, CUmemAllocationHandleType handle_type) {
+// Importing a pool that is already imported in this process returns the same
+// CUmemoryPool and adds a driver reference: each import needs its own
+// cuMemPoolDestroy, and one made while allocations imported from the pool are
+// outstanding fails without dropping its reference. Access settings belong to
+// the pool, not to an import, so revoking them on behalf of one import
+// (nvbug 5698116) would remove access that another import relies on (#3510).
+// All imports of a pool therefore share one owner, found through
+// ipc_pool_registry. It counts the imports and, when its last reference is
+// released, revokes access once and then destroys every import. An import that
+// finds the owner's release in flight waits for it, even when the last
+// reference was dropped by a buffer and not by a resource the importer could
+// synchronize with: the revocation would remove access granted by a new owner,
+// and a destroy fails once the new owner has imported a buffer.
+namespace {
+struct IpcMemoryPoolBox {
+    CUmemoryPool resource;
+    // The imports this box owns: 0 until it becomes the pool's owner, then
+    // one for every import of the pool.
+    mutable std::atomic<std::size_t> imports{0};
+};
+
+const IpcMemoryPoolBox *
+get_ipc_box(const MemoryPoolHandle &h)
+{
+    const CUmemoryPool *p = h.get();
+    return reinterpret_cast<const IpcMemoryPoolBox *>(
+        reinterpret_cast<const char *>(p) - offsetof(IpcMemoryPoolBox, resource)
+    );
+}
+}  // namespace
+
+// See REGISTRY_DESIGN.md (Level 1: Driver Handle -> Resource Handle)
+static ReleasingHandleRegistry<CUmemoryPool, MemoryPoolHandle> ipc_pool_registry;
+
+MemoryPoolHandle
+create_mempool_handle_ipc(int fd, CUmemAllocationHandleType handle_type)
+{
+    // Released before the registry can wait: the owner's deleter may need it.
     GILReleaseGuard gil;
-    CUmemoryPool pool;
-    auto handle_ptr = reinterpret_cast<void*>(static_cast<uintptr_t>(fd));
-    if (CUDA_SUCCESS != (err = DRIVER_CALL(cuMemPoolImportFromShareableHandle, &pool, handle_ptr, handle_type, 0))) {
+    // Allocate before importing: a failed allocation then has nothing to undo.
+    // clang-format off
+    auto box = std::shared_ptr<IpcMemoryPoolBox>(
+        new IpcMemoryPoolBox{},
+        [](const IpcMemoryPoolBox *b) {
+            // Shared ownership synchronizes the increments with this load.
+            std::size_t imports = b->imports.load(std::memory_order_relaxed);
+            if (imports > 0) {
+                GILReleaseGuard gil;
+                if (unsigned int delay = g_ipc_pool_release_delay_us.load(std::memory_order_relaxed)) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(delay));
+                }
+                clear_mempool_peer_access(b->resource, -1);
+                const std::size_t total = imports;
+                std::size_t failed = 0;
+                CUresult first_failure = CUDA_SUCCESS;
+                for (; imports > 0; --imports) {
+                    if (CUresult s = DRIVER_CALL(cuMemPoolDestroy, b->resource); s != CUDA_SUCCESS) {
+                        if (failed++ == 0) {
+                            first_failure = s;
+                        }
+                    }
+                }
+                g_live_owned_mempools.fetch_sub(1, std::memory_order_relaxed);
+                // Wake waiting importers before reporting: a report can run
+                // user code, which could import this pool again.
+                ipc_pool_registry.release(b->resource, &b->resource);
+                if (failed > 0) {
+                    char operation[kOperationNameSize];
+                    format_operation(operation, sizeof(operation), "cuMemPoolDestroy", handle_bits(b->resource));
+                    char detail[kErrorMessageSize];
+                    std::snprintf(detail, sizeof(detail), "failed %zu of %zu times, first with", failed, total);
+                    report_cuda_error(operation, first_failure, total > 1 ? detail : nullptr);
+                }
+            }
+            delete b;
+        }
+    );
+    // clang-format on
+    auto *handle_ptr = reinterpret_cast<void *>(static_cast<uintptr_t>(fd));
+    if (CUDA_SUCCESS !=
+        (err = DRIVER_CALL(cuMemPoolImportFromShareableHandle, &box->resource, handle_ptr, handle_type, 0))) {
         return {};
     }
-    return wrap_mempool_owned(pool, -1);
+
+    MemoryPoolHandle h(box, &box->resource);
+    MemoryPoolHandle owner;
+    try {
+        owner = ipc_pool_registry.get_or_create(box->resource, [&]() noexcept {
+            box->imports.store(1, std::memory_order_relaxed);
+            return h;
+        });
+    }
+    catch (...) {
+        // The box owns no import yet, so its deleter would not drop this one.
+        pw_cuMemPoolDestroy(box->resource);
+        throw;
+    }
+    if (owner == h) {
+        g_live_owned_mempools.fetch_add(1, std::memory_order_relaxed);
+    }
+    else {
+        // An earlier import's box owns the pool; it now holds this import's
+        // driver reference too.
+        get_ipc_box(owner)->imports.fetch_add(1, std::memory_order_relaxed);
+    }
+    return owner;
 }
 
 // ============================================================================
@@ -157,21 +281,27 @@ struct VmmDevicePtrBox : DevicePtrBox {
 // &box->resource, so we can compute the containing struct using offsetof.
 // The const_cast is safe because we only use this to access the mutable
 // deallocation member or in the deleter (where the box is being destroyed).
-static DevicePtrBox* get_box(const DevicePtrHandle& h) {
-    const CUdeviceptr* p = h.get();
-    return reinterpret_cast<DevicePtrBox*>(
-        reinterpret_cast<char*>(const_cast<CUdeviceptr*>(p)) - offsetof(DevicePtrBox, resource)
+static DevicePtrBox *
+get_box(const DevicePtrHandle &h)
+{
+    const CUdeviceptr *p = h.get();
+    return reinterpret_cast<DevicePtrBox *>(
+        reinterpret_cast<char *>(const_cast<CUdeviceptr *>(p)) - offsetof(DevicePtrBox, resource)
     );
 }
 
 // Return the stream that orders a device pointer's deallocation; empty for an
 // empty handle, as set_deallocation_stream rejects one.
-StreamHandle deallocation_stream(const DevicePtrHandle& h) noexcept {
+StreamHandle
+deallocation_stream(const DevicePtrHandle &h) noexcept
+{
     return h ? get_box(h)->deallocation.h_stream : StreamHandle{};
 }
 
 // Replace the stream that orders a device pointer's deallocation.
-CUresult set_deallocation_stream(const DevicePtrHandle& h, const StreamHandle& h_stream) noexcept {
+CUresult
+set_deallocation_stream(const DevicePtrHandle &h, const StreamHandle &h_stream)
+{
     if (!h) {
         return CUDA_ERROR_INVALID_VALUE;
     }
@@ -183,7 +313,9 @@ CUresult set_deallocation_stream(const DevicePtrHandle& h, const StreamHandle& h
     return CUDA_SUCCESS;
 }
 
-DevicePtrHandle deviceptr_alloc_from_pool(size_t size, const MemoryPoolHandle& h_pool, const StreamHandle& h_stream) {
+DevicePtrHandle
+deviceptr_alloc_from_pool(size_t size, const MemoryPoolHandle &h_pool, const StreamHandle &h_stream)
+{
     GILReleaseGuard gil;
     CUdeviceptr ptr;
     if (CUDA_SUCCESS != (err = DRIVER_CALL(cuMemAllocFromPoolAsync, &ptr, size, *h_pool, as_cu(h_stream)))) {
@@ -196,9 +328,10 @@ DevicePtrHandle deviceptr_alloc_from_pool(size_t size, const MemoryPoolHandle& h
         return {};
     }
 
+    // clang-format off
     auto box = std::shared_ptr<DevicePtrBox>(
         new DevicePtrBox{ptr, std::move(ds)},
-        [h_pool](DevicePtrBox* b) {
+        [h_pool](DevicePtrBox *b) {
             GILReleaseGuard gil;
             const DeallocationStream& stream = b->deallocation;
             cleanup_in_context(
@@ -210,10 +343,13 @@ DevicePtrHandle deviceptr_alloc_from_pool(size_t size, const MemoryPoolHandle& h
             delete b;
         }
     );
+    // clang-format on
     return DevicePtrHandle(box, &box->resource);
 }
 
-DevicePtrHandle deviceptr_alloc_async(size_t size, const StreamHandle& h_stream) {
+DevicePtrHandle
+deviceptr_alloc_async(size_t size, const StreamHandle &h_stream)
+{
     GILReleaseGuard gil;
     CUdeviceptr ptr;
     if (CUDA_SUCCESS != (err = DRIVER_CALL(cuMemAllocAsync, &ptr, size, as_cu(h_stream)))) {
@@ -226,9 +362,10 @@ DevicePtrHandle deviceptr_alloc_async(size_t size, const StreamHandle& h_stream)
         return {};
     }
 
+    // clang-format off
     auto box = std::shared_ptr<DevicePtrBox>(
         new DevicePtrBox{ptr, std::move(ds)},
-        [](DevicePtrBox* b) {
+        [](DevicePtrBox *b) {
             GILReleaseGuard gil;
             const DeallocationStream& stream = b->deallocation;
             cleanup_in_context(
@@ -240,44 +377,55 @@ DevicePtrHandle deviceptr_alloc_async(size_t size, const StreamHandle& h_stream)
             delete b;
         }
     );
+    // clang-format on
     return DevicePtrHandle(box, &box->resource);
 }
 
 // Allocate device memory synchronously with the provided context current.
-CUresult deviceptr_alloc_raw(CUdeviceptr* ptr, size_t size,
-                             const ContextHandle& h_context) noexcept {
+CUresult
+deviceptr_alloc_raw(CUdeviceptr *ptr, size_t size, const ContextHandle &h_context) noexcept
+{
     GILReleaseGuard gil;
     return invoke_in_context_or_undo(
         h_context,
         [&]() noexcept { return DRIVER_CALL(cuMemAlloc, ptr, size); },
         [&]() noexcept { pw_cuMemFree(*ptr); },
-        /*undo_requires_target_context=*/false);
+        /*undo_requires_target_context=*/false
+    );
 }
 
-DevicePtrHandle deviceptr_alloc_host(size_t size) {
+DevicePtrHandle
+deviceptr_alloc_host(size_t size)
+{
     GILReleaseGuard gil;
-    void* ptr;
+    void *ptr;
     if (CUDA_SUCCESS != (err = DRIVER_CALL(cuMemAllocHost, &ptr, size))) {
         return {};
     }
 
+    // clang-format off
     auto box = std::shared_ptr<DevicePtrBox>(
         new DevicePtrBox{reinterpret_cast<CUdeviceptr>(ptr), DeallocationStream{}},
-        [](DevicePtrBox* b) {
+        [](DevicePtrBox *b) {
             GILReleaseGuard gil;
-            pw_cuMemFreeHost(reinterpret_cast<void*>(b->resource));
+            pw_cuMemFreeHost(reinterpret_cast<void *>(b->resource));
             delete b;
         }
     );
+    // clang-format on
     return DevicePtrHandle(box, &box->resource);
 }
 
-DevicePtrHandle deviceptr_create_ref(CUdeviceptr ptr) {
+DevicePtrHandle
+deviceptr_create_ref(CUdeviceptr ptr)
+{
     auto box = std::make_shared<DevicePtrBox>(DevicePtrBox{ptr, DeallocationStream{}});
     return DevicePtrHandle(box, &box->resource);
 }
 
-DevicePtrHandle deviceptr_create_with_owner(CUdeviceptr ptr, PyObject* owner) {
+DevicePtrHandle
+deviceptr_create_with_owner(CUdeviceptr ptr, PyObject *owner)
+{
     if (!owner) {
         return deviceptr_create_ref(ptr);
     }
@@ -288,9 +436,10 @@ DevicePtrHandle deviceptr_create_with_owner(CUdeviceptr ptr, PyObject* owner) {
         return deviceptr_create_ref(ptr);
     }
     Py_INCREF(owner);
+    // clang-format off
     auto box = std::shared_ptr<DevicePtrBox>(
         new DevicePtrBox{ptr, DeallocationStream{}},
-        [owner](DevicePtrBox* b) {
+        [owner](DevicePtrBox *b) {
             GILAcquireGuard gil;
             if (gil.acquired()) {
                 Py_DECREF(owner);
@@ -298,21 +447,23 @@ DevicePtrHandle deviceptr_create_with_owner(CUdeviceptr ptr, PyObject* owner) {
             delete b;
         }
     );
+    // clang-format on
     return DevicePtrHandle(box, &box->resource);
 }
 
-DevicePtrHandle deviceptr_create_mapped_graphics(
-    CUdeviceptr ptr,
-    const GraphicsResourceHandle& h_resource,
-    const StreamHandle& h_stream
-) {
+DevicePtrHandle
+deviceptr_create_mapped_graphics(
+    CUdeviceptr ptr, const GraphicsResourceHandle &h_resource, const StreamHandle &h_stream
+)
+{
     DeallocationStream ds;
     if (!make_deallocation_stream(h_stream, ds)) {
         return {};
     }
+    // clang-format off
     auto box = std::shared_ptr<DevicePtrBox>(
         new DevicePtrBox{ptr, std::move(ds)},
-        [h_resource](DevicePtrBox* b) {
+        [h_resource](DevicePtrBox *b) {
             GILReleaseGuard gil;
             CUgraphicsResource resource = as_cu(h_resource);
             const DeallocationStream& stream = b->deallocation;
@@ -325,6 +476,7 @@ DevicePtrHandle deviceptr_create_mapped_graphics(
             delete b;
         }
     );
+    // clang-format on
     return DevicePtrHandle(box, &box->resource);
 }
 
@@ -332,14 +484,17 @@ DevicePtrHandle deviceptr_create_mapped_graphics(
 // Virtual memory ranges (VMM_DESIGN.md)
 // ============================================================================
 
-DevicePtrHandle deviceptr_create_vmm(CUdeviceptr base, const VmmRangeHandle& range) {
+DevicePtrHandle
+deviceptr_create_vmm(CUdeviceptr base, const VmmRangeHandle &range)
+{
     if (!range) {  // a null handle; an empty range is valid
         err = CUDA_ERROR_INVALID_VALUE;
         return {};
     }
+    // clang-format off
     auto box = std::shared_ptr<VmmDevicePtrBox>(
         new VmmDevicePtrBox{{base, DeallocationStream{}}, range},
-        [](VmmDevicePtrBox* b) {
+        [](VmmDevicePtrBox *b) {
             GILReleaseGuard gil;
             // Order the release on this buffer's recorded stream, then free
             // the box, which drops the range: every mapping this buffer was
@@ -349,13 +504,16 @@ DevicePtrHandle deviceptr_create_vmm(CUdeviceptr base, const VmmRangeHandle& ran
             delete b;
         }
     );
+    // clang-format on
     return DevicePtrHandle(box, &box->resource);
 }
 
-VmmRangeHandle vmm_range(const DevicePtrHandle& h) noexcept {
+VmmRangeHandle
+vmm_range(const DevicePtrHandle &h) noexcept
+{
     // Only for handles from deviceptr_create_vmm; the VirtualMemoryBuffer
     // class guarantees that for its callers.
-    return h ? static_cast<VmmDevicePtrBox*>(get_box(h))->range : VmmRangeHandle{};
+    return h ? static_cast<VmmDevicePtrBox *>(get_box(h))->range : VmmRangeHandle{};
 }
 
 // ============================================================================
@@ -364,11 +522,15 @@ VmmRangeHandle vmm_range(const DevicePtrHandle& h) noexcept {
 
 static MRDeallocCallback mr_dealloc_cb = nullptr;
 
-void register_mr_dealloc_callback(MRDeallocCallback cb) {
+void
+register_mr_dealloc_callback(MRDeallocCallback cb)
+{
     mr_dealloc_cb = cb;
 }
 
-DevicePtrHandle deviceptr_create_with_mr(CUdeviceptr ptr, size_t size, PyObject* mr) {
+DevicePtrHandle
+deviceptr_create_with_mr(CUdeviceptr ptr, size_t size, PyObject *mr)
+{
     if (!mr) {
         return deviceptr_create_ref(ptr);
     }
@@ -378,9 +540,10 @@ DevicePtrHandle deviceptr_create_with_mr(CUdeviceptr ptr, size_t size, PyObject*
         return deviceptr_create_ref(ptr);
     }
     Py_INCREF(mr);
+    // clang-format off
     auto box = std::shared_ptr<DevicePtrBox>(
         new DevicePtrBox{ptr, DeallocationStream{}},
-        [mr, size](DevicePtrBox* b) {
+        [mr, size](DevicePtrBox *b) {
             GILAcquireGuard gil;
             if (gil.acquired()) {
                 // The last reference may go while an exception propagates
@@ -401,6 +564,7 @@ DevicePtrHandle deviceptr_create_with_mr(CUdeviceptr ptr, size_t size, PyObject*
             delete b;
         }
     );
+    // clang-format on
     return DevicePtrHandle(box, &box->resource);
 }
 
@@ -427,11 +591,12 @@ DevicePtrHandle deviceptr_create_with_mr(CUdeviceptr ptr, size_t size, PyObject*
 // The cache key is the export_data bytes (CUmemPoolPtrExportData), not the
 // returned pointer, because we must check before calling the driver API.
 
-
 // TODO: When driver fix for nvbug 5570902 is available, consider whether
 // the cache is still needed for memory pool allocations (it will still be
 // needed for pinned memory).
-static bool use_ipc_ptr_cache() {
+static bool
+use_ipc_ptr_cache()
+{
     return true;
 }
 
@@ -440,34 +605,42 @@ namespace {
 struct ExportDataKey {
     CUmemPoolPtrExportData data;
 
-    bool operator==(const ExportDataKey& other) const {
+    bool
+    operator==(const ExportDataKey &other) const
+    {
         return std::memcmp(&data, &other.data, sizeof(data)) == 0;
     }
 };
 
 struct ExportDataKeyHash {
-    std::size_t operator()(const ExportDataKey& key) const {
+    std::size_t
+    operator()(const ExportDataKey &key) const
+    {
         // Simple hash of the bytes
         std::size_t h = 0;
-        const auto* bytes = reinterpret_cast<const unsigned char*>(&key.data);
+        const auto *bytes = reinterpret_cast<const unsigned char *>(&key.data);
         for (std::size_t i = 0; i < sizeof(key.data); ++i) {
-            h = h * 31 + bytes[i];
+            h = (h * 31) + bytes[i];  // NOLINT(readability-magic-numbers)
         }
         return h;
     }
 };
 
-}
+}  // namespace
 
-static HandleRegistry<ExportDataKey, DevicePtrHandle, ExportDataKeyHash> ipc_ptr_cache;
-static std::mutex ipc_import_mutex;
+// An importer that finds an expired entry waits until the previous handle's
+// deleter has freed the mapping: a re-import before then would share that
+// mapping, and the deleter's cuMemFreeAsync would unmap it under the new
+// handle (nvbug 5570902).
+static ReleasingHandleRegistry<ExportDataKey, DevicePtrHandle, ExportDataKeyHash> ipc_ptr_cache;
 
-DevicePtrHandle deviceptr_import_ipc(const MemoryPoolHandle& h_pool, const void* export_data, const StreamHandle& h_stream) {
-    auto data = const_cast<CUmemPoolPtrExportData*>(
-        reinterpret_cast<const CUmemPoolPtrExportData*>(export_data));
+DevicePtrHandle
+deviceptr_import_ipc(const MemoryPoolHandle &h_pool, const void *export_data, const StreamHandle &h_stream)
+{
+    auto *data = const_cast<CUmemPoolPtrExportData *>(reinterpret_cast<const CUmemPoolPtrExportData *>(export_data));
 
     // Resolve the table before you take any lock: a fill acquires the GIL, and
-    // nothing under ipc_import_mutex may acquire it (#2840). The raw p_ calls
+    // nothing under the cache's mutex may acquire it (#2840). The raw p_ calls
     // below rely on this.
     if (!ensure_fn_table(FnTable::driver)) {
         report_unavailable_fn(FnTable::driver, "cuMemPoolImportPointer");
@@ -479,124 +652,151 @@ DevicePtrHandle deviceptr_import_ipc(const MemoryPoolHandle& h_pool, const void*
         ExportDataKey key;
         std::memcpy(&key.data, data, sizeof(key.data));
 
-        // The mutex makes lookup, import and registration one step, so two
-        // threads cannot import the same descriptor twice. Release the GIL
-        // before taking it: a thread blocked on the mutex while holding the
-        // GIL would deadlock with a holder that needs the GIL back (#2840).
-        // Nothing under the mutex may acquire the GIL, so a failed discard is
-        // reported only after the lock is released (see DESIGN.md).
+        // Release the GIL before the cache's mutex is taken: a thread blocked
+        // on it while holding the GIL would deadlock with a holder that needs
+        // the GIL back (#2840).
         GILReleaseGuard gil;
-        CUresult discard_status = CUDA_SUCCESS;
-        CUdeviceptr discarded = 0;
-        {
-            std::lock_guard<std::mutex> lock(ipc_import_mutex);
-
-            if (auto h = ipc_ptr_cache.lookup(key)) {
-                return h;
-            }
-
-            CUdeviceptr ptr;
-            if (CUDA_SUCCESS != (err = p_cuMemPoolImportPointer(&ptr, *h_pool, data))) {  // raw: under ipc_import_mutex
-                return {};
-            }
-
-            DeallocationStream ds;
-            if (make_deallocation_stream(h_stream, ds)) {
-                auto box = std::shared_ptr<DevicePtrBox>(
-                    new DevicePtrBox{ptr, std::move(ds)},
-                    [h_pool, key](DevicePtrBox* b) {
-                        // Release the GIL first (the GIL is the outermost lock), then hold the
-                        // mutex across unregister + free: a concurrent import that finds this
-                        // entry expired must wait until the mapping is gone, or it re-imports
-                        // the same allocation and the first cuMemFreeAsync unmaps it for both
-                        // (nvbug 5570902). Nothing under the mutex may acquire the GIL, so the
-                        // deallocation context is resolved before the lock (it may report) and
-                        // the lock is released as soon as the cleanup is done.
-                        GILReleaseGuard gil;
-                        const DeallocationStream& stream = b->deallocation;
-                        ContextHandle h_dealloc = deallocation_context(stream);
-                        std::unique_lock<std::mutex> lock(ipc_import_mutex);
-                        ipc_ptr_cache.unregister_handle(key);
-                        cleanup_in_context(
-                            h_dealloc, "cuMemFreeAsync", handle_bits(b->resource),
-                            [&]() noexcept {
-                                return p_cuMemFreeAsync(b->resource, as_cu(stream.h_stream));  // raw: under ipc_import_mutex
-                            },
-                            [&]() noexcept { lock.unlock(); });
-                        delete b;
-                    }
-                );
-                DevicePtrHandle h(box, &box->resource);
-                ipc_ptr_cache.register_handle(key, h);
-                return h;
-            }
-
-            // No deallocation stream could be recorded: discard the import with
-            // the raw call (a pw_ report would acquire the GIL under the mutex).
-            discard_status = p_cuMemFreeAsync(ptr, as_cu(h_stream));  // raw: under ipc_import_mutex
-            discarded = ptr;
-        }
-        if (discard_status != CUDA_SUCCESS) {
-            char operation[160];
-            format_operation(operation, sizeof(operation), "cuMemFreeAsync", discarded);
-            report_cuda_error(operation, discard_status,
-                              "failed while discarding an IPC import that could not record a "
-                              "deallocation stream; the mapping leaked");
-        }
-        return {};
-
-    } else {
-        GILReleaseGuard gil;
-        CUdeviceptr ptr;
-        if (CUDA_SUCCESS != (err = DRIVER_CALL(cuMemPoolImportPointer, &ptr, *h_pool, data))) {
-            return {};
-        }
-
-        DeallocationStream ds;
-        if (!make_deallocation_stream(h_stream, ds)) {
-            pw_cuMemFreeAsync(ptr, as_cu(h_stream));
-            return {};
-        }
-
+        // Allocate before taking the mutex: a failed allocation then cannot run
+        // a deleter under it. The box owns nothing until it holds an import.
+        // clang-format off
         auto box = std::shared_ptr<DevicePtrBox>(
-            new DevicePtrBox{ptr, std::move(ds)},
-            [h_pool](DevicePtrBox* b) {
-                GILReleaseGuard gil;
-                const DeallocationStream& stream = b->deallocation;
-                cleanup_in_context(
-                    deallocation_context(stream), "cuMemFreeAsync", handle_bits(b->resource),
-                    [&]() noexcept {
-                        return DRIVER_CALL(cuMemFreeAsync,
-                            b->resource, as_cu(stream.h_stream));
-                    });
+            new DevicePtrBox{0, DeallocationStream{}},
+            [h_pool, key](DevicePtrBox *b) {
+                if (b->resource != 0) {
+                    GILReleaseGuard gil;
+                    const DeallocationStream& stream = b->deallocation;
+                    // Release the entry once the mapping is freed, and before
+                    // reporting: a report can run user code.
+                    cleanup_in_context(
+                        deallocation_context(stream), "cuMemFreeAsync", handle_bits(b->resource),
+                        [&]() noexcept {
+                            return DRIVER_CALL(cuMemFreeAsync, b->resource, as_cu(stream.h_stream));
+                        },
+                        [&]() noexcept { ipc_ptr_cache.release(key, &b->resource); });
+                }
                 delete b;
             }
         );
-        return DevicePtrHandle(box, &box->resource);
+        // clang-format on
+        DevicePtrHandle h(box, &box->resource);
+
+        // The factory runs under the cache's mutex, which makes lookup, import
+        // and registration one step: two threads cannot import the same
+        // descriptor twice. Nothing under the mutex may acquire the GIL, so a
+        // failed discard is reported only after the lock is released (see
+        // DESIGN.md).
+        CUresult discard_status = CUDA_SUCCESS;
+        CUdeviceptr discarded = 0;
+        auto report_failed_discard = [&]() noexcept {
+            if (discard_status != CUDA_SUCCESS) {
+                char operation[kOperationNameSize];
+                format_operation(operation, sizeof(operation), "cuMemFreeAsync", discarded);
+                report_cuda_error(
+                    operation,
+                    discard_status,
+                    "failed while discarding an IPC import that could not record a "
+                    "deallocation stream; the mapping leaked"
+                );
+            }
+        };
+        DevicePtrHandle imported;
+        try {
+            imported = ipc_ptr_cache.get_or_create(key, [&]() -> DevicePtrHandle {
+                CUdeviceptr ptr;
+                if (CUDA_SUCCESS !=
+                    (err = p_cuMemPoolImportPointer(&ptr, *h_pool, data))) {  // raw: under the cache's mutex
+                    return {};
+                }
+                // No deallocation stream could be recorded: discard the import
+                // with the raw call (a pw_ report would acquire the GIL) before
+                // the mutex is released, or a concurrent import would share the
+                // mapping this free unmaps.
+                bool recorded;
+                try {
+                    recorded = make_deallocation_stream(h_stream, box->deallocation);
+                }
+                catch (...) {
+                    discard_status = p_cuMemFreeAsync(ptr, as_cu(h_stream));  // raw: under the cache's mutex
+                    discarded = ptr;
+                    throw;
+                }
+                if (!recorded) {
+                    discard_status = p_cuMemFreeAsync(ptr, as_cu(h_stream));  // raw: under the cache's mutex
+                    discarded = ptr;
+                    return {};
+                }
+                box->resource = ptr;
+                return h;
+            });
+        }
+        catch (...) {
+            report_failed_discard();
+            throw;
+        }
+        if (imported) {
+            return imported;
+        }
+        report_failed_discard();
+        return {};
     }
+    GILReleaseGuard gil;
+    CUdeviceptr ptr;
+    if (CUDA_SUCCESS != (err = DRIVER_CALL(cuMemPoolImportPointer, &ptr, *h_pool, data))) {
+        return {};
+    }
+
+    DeallocationStream ds;
+    if (!make_deallocation_stream(h_stream, ds)) {
+        pw_cuMemFreeAsync(ptr, as_cu(h_stream));
+        return {};
+    }
+
+    // clang-format off
+    auto box = std::shared_ptr<DevicePtrBox>(
+        new DevicePtrBox{ptr, std::move(ds)},
+        [h_pool](DevicePtrBox *b) {
+            GILReleaseGuard gil;
+            const DeallocationStream& stream = b->deallocation;
+            cleanup_in_context(
+                deallocation_context(stream), "cuMemFreeAsync", handle_bits(b->resource),
+                [&]() noexcept {
+                    return DRIVER_CALL(cuMemFreeAsync,
+                        b->resource, as_cu(stream.h_stream));
+                });
+            delete b;
+        }
+    );
+    // clang-format on
+    return DevicePtrHandle(box, &box->resource);
 }
 
 // ============================================================================
 // File Descriptor Handles
 // ============================================================================
 
-FileDescriptorHandle create_fd_handle(int fd) {
+FileDescriptorHandle
+create_fd_handle([[maybe_unused]] int fd)
+{
 #ifdef _WIN32
     throw std::runtime_error("create_fd_handle is not supported on Windows");
 #else
+    // clang-format off
     return FileDescriptorHandle(
         new int(fd),
-        [](const int* p) {
+        [](const int *p) {
             if (::close(*p) != 0) {
                 report_message("close() failed for an IPC file descriptor; the descriptor may have leaked");
             }
             delete p;
         }
     );
+    // clang-format on
 #endif
 }
 
-FileDescriptorHandle create_fd_handle_ref(int fd) {
+FileDescriptorHandle
+create_fd_handle_ref([[maybe_unused]] int fd)
+{
 #ifdef _WIN32
     throw std::runtime_error("create_fd_handle_ref is not supported on Windows");
 #else
